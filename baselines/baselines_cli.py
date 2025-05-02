@@ -113,8 +113,12 @@ def run_model(
         optimizer_config["lr"] = 1e-4
 
     if device is None:
-        logging.warning("device not set, torturing CPU.")
-        device = "cpu"
+        if torch.backends.mps.is_available():
+            device = "mps"
+            logging.info("Using MPS device (Apple Silicon GPU support)")
+        else:
+            logging.warning("device not set, torturing CPU.")
+            device = "cpu"
         # TODO data parallelism and whitelist
 
     if torch.cuda.is_available() and data_parallel:

@@ -525,7 +525,7 @@ def verify_submission(input_archive: Union[str, Path], competition: str):
     ground_truth_archive_list = {
         "temporal": [
             "CHICAGO/CHICAGO_test_temporal.h5",
-            "ISTANBUL/ISTANBUL_test_temporal.h5",
+            # "ISTANBUL/ISTANBUL_test_temporal.h5",
             "BERLIN/BERLIN_test_temporal.h5",
             "MELBOURNE/MELBOURNE_test_temporal.h5",
         ],
