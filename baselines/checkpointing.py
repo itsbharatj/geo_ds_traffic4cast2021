@@ -9,8 +9,13 @@ from torch.nn import DataParallel
 
 
 def load_torch_model_from_checkpoint(checkpoint: Union[str, Path], model: torch.nn.Module, map_location: str = None) -> torch.nn.Module:
-    if not torch.cuda.is_available():
+    if torch.mps.is_available():
+        map_location = "mps"
+    elif torch.cuda.is_available():
+        map_location = "cuda"
+    else: 
         map_location = "cpu"
+
     state_dict = torch.load(checkpoint, map_location=map_location)
     if isinstance(state_dict, DataParallel):
         logging.debug("     [torch-DataParallel]:")
