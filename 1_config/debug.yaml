@@ -1,0 +1,19 @@
+base_config: "config/base.yaml"
+
+data:
+  limit_per_split: 100
+  cities: ["BARCELONA", "MELBOURNE"]
+
+training:
+  batch_size: 2
+  epochs: 3
+  num_workers: null
+
+experiment:
+  type: "spatial_transfer"
+  train_cities: ["BARCELONA"]
+  test_cities: ["MELBOURNE"]
+
+logging:
+  experiment_name: "debug_experiment"
+  log_interval: 10
