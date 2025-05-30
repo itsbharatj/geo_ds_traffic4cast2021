@@ -3,8 +3,8 @@ import logging
 import sys
 from pathlib import Path
 
-from custom_data_splitter import SplitType
-from custom_training import run_model_with_custom_split
+from data.splitter import SplitType
+from baselines.custom_training import run_model_with_custom_split
 from baselines.baselines_configs import configs
 from data.dataset.dataset import T4CDataset
 from data.dataset.dataset_geometric import T4CGeometricDataset

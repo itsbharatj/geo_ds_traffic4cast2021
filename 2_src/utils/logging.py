@@ -12,7 +12,6 @@
 import logging
 import os
 
-
 def t4c_apply_basic_logging_config(loglevel: str = None):
     logging.basicConfig(
         level=os.environ.get("LOGLEVEL", "INFO") if loglevel is None else loglevel,

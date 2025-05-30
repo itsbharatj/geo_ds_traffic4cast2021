@@ -14,7 +14,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from data.dataset import EnhancedTrafficDataset, TrafficDataTransform
-from data.splitters import TrafficDataSplitter
+from data.splitter import TrafficDataSplitter
 from utils.config import Config
 
 class TestEnhancedTrafficDataset:

@@ -7,9 +7,9 @@ from typing import List, Optional, Callable, Tuple, Any
 import logging
 
 # Import existing utilities (modify paths as needed)
-from competition.competition_constants import MAX_TEST_SLOT_INDEX
-from competition.prepare_test_data.prepare_test_data import prepare_test
-from util.h5_util import load_h5_file
+from utils.constants import MAX_TEST_SLOT_INDEX
+from utils.prepare_test_data import prepare_test
+from utils.h5_util import load_h5_file
 
 class EnhancedTrafficDataset(Dataset):
     """Enhanced traffic dataset with flexible filtering and transforms"""

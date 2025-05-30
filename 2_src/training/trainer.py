@@ -328,7 +328,7 @@ class Traffic4CastTrainer:
             
             # Callbacks (checkpointing, early stopping)
             should_stop = self.callbacks.on_epoch_end(
-                epoch, val_metrics['loss'], self.model, self.optimizer
+                epoch, val_metrics, self.model, self.optimizer
             )
             
             # Update best validation loss  

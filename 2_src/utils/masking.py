@@ -10,9 +10,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 import numpy as np
-
 from util.h5_util import load_h5_file
-
 
 def create_static_mask(static_roads, num_slots=0):
     static_mask_once = np.where(static_roads[0] > 0, 1, 0)

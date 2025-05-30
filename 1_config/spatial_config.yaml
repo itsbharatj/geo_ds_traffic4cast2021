@@ -12,5 +12,5 @@ logging:
   experiment_name: "spatial_transfer_experiment"
 
 training:
-  batch_size: 4
+  batch_size: 1
   epochs: 50

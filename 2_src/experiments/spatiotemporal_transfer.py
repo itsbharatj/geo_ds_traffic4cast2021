@@ -11,7 +11,7 @@ import torch
 import numpy as np
 
 from ..utils.config import Config
-from ..data.splitters import ExperimentDataManager
+from ..data.splitter import ExperimentDataManager
 from ..data.dataset import create_data_loaders, get_dataset_stats
 from ..models.unet import create_unet_model
 from ..training.trainer import create_trainer

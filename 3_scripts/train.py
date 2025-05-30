@@ -14,14 +14,15 @@ import logging
 from pathlib import Path
 
 # Add src to path
-sys.path.append(str(Path(__file__).parent.parent / "src"))
+src_path = Path(__file__).parent.parent / "2_src"
+sys.path.append(str(src_path))
 
 import torch
 import numpy as np
 from utils.config import load_config
 from utils.logging_utils import setup_logging
 from utils.reproducibility import set_random_seeds
-from data.splitters import ExperimentDataManager
+from data.splitter import ExperimentDataManager
 from data.dataset import create_data_loaders
 from models.unet import create_unet_model
 from training.trainer import create_trainer
@@ -48,6 +49,10 @@ def main():
         config.training.epochs = 2
         config.training.batch_size = 2
         config.logging.log_interval = 5
+    # Force num_workers=0 for macOS/conda compatibility [REMOVE ON THE SERVER]
+    if config.training.num_workers is None:
+        config.training.num_workers = 0
+        
     
     # Setup logging
     setup_logging()

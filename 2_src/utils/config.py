@@ -24,7 +24,7 @@ class TrainingConfig:
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
     device: str = "auto"
-    num_workers: int = 4
+    num_workers: Optional[int] = None  # Set to None to use default
     pin_memory: bool = True
     
 @dataclass
@@ -36,6 +36,7 @@ class DataConfig:
     channels: int = 8
     height: int = 495
     width: int = 436
+    limit_per_split: Optional[int] = None  # Add this line
     
     def __post_init__(self):
         if self.cities is None:
@@ -88,6 +89,9 @@ class Config:
         # Initialize sub-configs
         self.model = ModelConfig(**config_dict.get('model', {}))
         self.training = TrainingConfig(**config_dict.get('training', {}))
+        # Ensure num_workers is int if not None
+        if self.training.num_workers is not None and not isinstance(self.training.num_workers, int):
+            self.training.num_workers = int(self.training.num_workers)
         self.data = DataConfig(**config_dict.get('data', {}))
         self.experiment = ExperimentConfig(**config_dict.get('experiment', {}))
         self.logging = LoggingConfig(**config_dict.get('logging', {}))

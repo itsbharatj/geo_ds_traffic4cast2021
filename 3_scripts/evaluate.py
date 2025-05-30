@@ -23,7 +23,7 @@ import seaborn as sns
 
 from utils.config import load_config, Config
 from utils.logging_utils import setup_logging
-from data.splitters import ExperimentDataManager
+from data.splitter import ExperimentDataManager
 from data.dataset import create_data_loaders
 from models.unet import create_unet_model
 from training.metrics import TrafficMetrics
