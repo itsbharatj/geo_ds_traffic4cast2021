@@ -1,0 +1,16 @@
+base_config: "config/base.yaml"
+
+experiment:
+  type: "spatiotemporal_transfer"
+  train_years: ["2019"]
+  test_years: ["2020"]
+  cities: ["BARCELONA", "MELBOURNE", "NEWYORK", "CHICAGO"]
+  random_seed: 42
+  val_fraction: 0.1
+
+logging:
+  experiment_name: "spatiotemporal_transfer_experiment"
+
+training:
+  batch_size: 8
+  epochs: 75
