@@ -1,12 +1,7 @@
 # scripts/train.py
 """
-Main training script for Traffic4Cast experiments including enhanced spatio-temporal transfer
-
-Usage:
-    python scripts/train.py --config config/spatial_config.yaml
-    python scripts/train.py --config config/spatiotemporal_config.yaml
-    python scripts/train.py --config config/debug.yaml --debug
-    python scripts/train.py --config config/enhanced_spatiotemporal.yaml
+Enhanced training script with TQDM, comprehensive metrics, wandb integration, 
+and improved checkpointing
 """
 
 import sys
@@ -27,7 +22,7 @@ from data.splitter import ExperimentDataManager
 from data.dataset import create_data_loaders
 from models.unet import create_unet_model
 from models.multitask_unet import create_multitask_unet
-from training.trainer import create_trainer
+from training.trainer import create_enhanced_trainer
 
 def create_model_from_config(config):
     """Create appropriate model based on configuration"""
@@ -40,12 +35,15 @@ def create_model_from_config(config):
         return create_unet_model(config)
 
 def main():
-    parser = argparse.ArgumentParser(description="Traffic4Cast Training")
+    parser = argparse.ArgumentParser(description="Enhanced Traffic4Cast Training")
     parser.add_argument("--config", required=True, help="Path to config file")
     parser.add_argument("--experiment-name", help="Override experiment name")
     parser.add_argument("--device", help="Override device")
     parser.add_argument("--test-city", help="Override test city (for spatio-temporal)")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--no-wandb", action="store_true", help="Disable wandb logging")
+    parser.add_argument("--wandb-project", default="traffic4cast", help="Wandb project name")
+    parser.add_argument("--resume", help="Path to checkpoint to resume from")
     
     args = parser.parse_args()
     
@@ -58,7 +56,6 @@ def main():
     if args.device:
         config.training.device = args.device
     if args.test_city:
-        # Handle different experiment types
         if hasattr(config.experiment, 'test_cities'):
             config.experiment.test_cities = [args.test_city]
         if hasattr(config.experiment, 'test_city'):
@@ -68,7 +65,6 @@ def main():
         config.training.epochs = 3
         config.training.batch_size = 2
         config.logging.log_interval = 5
-        # Reduce adaptation samples for debug
         if hasattr(config.experiment, 'adaptation_samples'):
             config.experiment.adaptation_samples = 10
         
@@ -84,12 +80,14 @@ def main():
     
     # Log configuration
     logging.info("=" * 80)
-    logging.info("TRAFFIC4CAST EXPERIMENT")
+    logging.info("ENHANCED TRAFFIC4CAST EXPERIMENT")
     logging.info("=" * 80)
     logging.info(f"Experiment type: {config.experiment.type}")
     logging.info(f"Config file: {args.config}")
     logging.info(f"Device: {config.training.device}")
     logging.info(f"Random seed: {config.experiment.random_seed}")
+    logging.info(f"Wandb enabled: {not args.no_wandb}")
+    logging.info(f"Wandb project: {args.wandb_project}")
     
     # Log experiment-specific details
     if config.experiment.type == "spatial_transfer":
@@ -173,12 +171,41 @@ def main():
             logging.info(f"  Use attention: {model_info.get('use_attention', False)}")
             logging.info(f"  Use meta-learning: {model_info.get('use_meta_learning', False)}")
     
-    # Create trainer
-    logging.info("Setting up trainer...")
-    trainer = create_trainer(model, train_loader, val_loader, test_loader, config)
+    # Create enhanced trainer
+    logging.info("Setting up enhanced trainer...")
+    trainer = create_enhanced_trainer(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        test_loader=test_loader,
+        config=config,
+        use_wandb=not args.no_wandb,
+        wandb_project=args.wandb_project
+    )
+    
+    # Resume from checkpoint if specified
+    if args.resume:
+        logging.info(f"Resuming from checkpoint: {args.resume}")
+        try:
+            checkpoint = torch.load(args.resume, map_location=trainer.device)
+            trainer.model.load_state_dict(checkpoint['model_state_dict'])
+            trainer.main_optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            
+            if 'scheduler_state_dict' in checkpoint and trainer.scheduler:
+                trainer.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            
+            if 'epoch' in checkpoint:
+                trainer.current_epoch = checkpoint['epoch'] + 1
+                logging.info(f"Resuming from epoch {trainer.current_epoch}")
+            
+            logging.info("✅ Successfully resumed from checkpoint")
+            
+        except Exception as e:
+            logging.error(f"❌ Failed to resume from checkpoint: {e}")
+            raise
     
     # Start training
-    logging.info("Starting training...")
+    logging.info("Starting enhanced training...")
     try:
         training_history = trainer.fit()
         
@@ -192,8 +219,11 @@ def main():
             if hasattr(trainer, 'best_transfer_score'):
                 logging.info(f"  Best transfer score: {trainer.best_transfer_score:.6f}")
             logging.info(f"  Best validation loss: {trainer.best_val_loss:.6f}")
-            logging.info(f"  Final training loss: {training_history['train_loss'][-1]:.6f}")
-            logging.info(f"  Final test loss: {training_history['test_loss'][-1]:.6f}")
+            
+            if training_history['train_loss']:
+                logging.info(f"  Final training loss: {training_history['train_loss'][-1]:.6f}")
+            if training_history['test_loss']:
+                logging.info(f"  Final test loss: {training_history['test_loss'][-1]:.6f}")
             
             # Log research insights
             logging.info(f"\nResearch Insights:")
@@ -205,31 +235,55 @@ def main():
         else:
             logging.info(f"Training Results:")
             logging.info(f"  Best validation loss: {trainer.best_val_loss:.6f}")
-            logging.info(f"  Final training loss: {training_history['train_loss'][-1]:.6f}")
-            logging.info(f"  Final test loss: {training_history['test_loss'][-1]:.6f}")
+            if training_history['train_loss']:
+                logging.info(f"  Final training loss: {training_history['train_loss'][-1]:.6f}")
+            if training_history['test_loss']:
+                logging.info(f"  Final test loss: {training_history['test_loss'][-1]:.6f}")
         
-        logging.info(f"\nResults saved to: {trainer.save_dir}")
+        # Get checkpoint info
+        checkpoint_info = trainer.checkpoint_manager.get_best_checkpoint_info()
+        logging.info(f"\nBest checkpoint saved at epoch {checkpoint_info.get('best_epoch', 'N/A')}")
+        logging.info(f"Results saved to: {trainer.save_dir}")
+        
+        # Final metric summary
+        logging.info("\n📊 FINAL METRICS SUMMARY:")
+        if hasattr(trainer, 'metrics_tracker'):
+            best_epoch, best_score = trainer.metrics_tracker.get_best_epoch('competition_score', 'val')
+            logging.info(f"  Best validation epoch: {best_epoch}")
+            logging.info(f"  Best competition score: {best_score:.6f}")
         
         # Success message
-        logging.info("\nTraining completed successfully!")
+        logging.info("\n🎉 Training completed successfully!")
         
         if config.experiment.type == "enhanced_spatiotemporal_transfer":
-            logging.info("\nResearch Contribution Summary:")
+            logging.info("\n🔬 Research Contribution Summary:")
             logging.info("• Implemented true spatio-temporal transfer learning")
             logging.info("• Multi-task learning with auxiliary spatial and temporal tasks")
-            logging.info("• Attention mechanisms for adaptive feature fusion")
             logging.info("• Meta-learning for few-shot adaptation to new cities")
-            logging.info("• Evaluation on completely unseen city with temporal distribution shift")
-            logging.info("\nThis addresses the research question:")
-            logging.info("'Can models transfer to predict COVID-era traffic in unseen cities?'")
+        
+        # Print paths to important files
+        logging.info(f"\n📁 Important Files:")
+        logging.info(f"  Training log CSV: {trainer.checkpoint_manager.csv_path}")
+        logging.info(f"  Best model: {trainer.save_dir}/checkpoints/best_model.pth")
+        logging.info(f"  Training history: {trainer.save_dir}/training_history.json")
+        logging.info(f"  Training summary: {trainer.save_dir}/checkpoints/training_summary.json")
+        
+        return 0  # Success
         
     except KeyboardInterrupt:
         logging.info("Training interrupted by user")
         if hasattr(trainer, 'save_results'):
             trainer.save_results()
+        if hasattr(trainer, 'wandb_logger') and trainer.wandb_logger:
+            trainer.wandb_logger.finish(exit_code=1)
+        return 1
+        
     except Exception as e:
-        logging.error(f"Training failed with error: {e}")
+        logging.error(f"❌ Training failed with error: {e}")
+        if hasattr(trainer, 'wandb_logger') and trainer.wandb_logger:
+            trainer.wandb_logger.finish(exit_code=1)
         raise
 
 if __name__ == "__main__":
-    main()
+    exit_code = main()
+    sys.exit(exit_code)
