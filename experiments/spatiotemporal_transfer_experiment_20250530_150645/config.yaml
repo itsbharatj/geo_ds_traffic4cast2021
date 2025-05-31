@@ -1,0 +1,46 @@
+data:
+  channels: 8
+  cities:
+  - BARCELONA
+  - MELBOURNE
+  - NEWYORK
+  - CHICAGO
+  height: 495
+  input_timesteps: 12
+  limit_per_split: null
+  output_timesteps: 6
+  root_dir: ./data/raw
+  width: 436
+experiment:
+  random_seed: 42
+  test_cities: null
+  test_years:
+  - '2020'
+  train_cities: null
+  train_years:
+  - '2019'
+  type: spatiotemporal_transfer
+  val_fraction: 0.1
+logging:
+  experiment_name: spatiotemporal_transfer_experiment
+  log_interval: 100
+  save_checkpoints: true
+  save_dir: ./experiments
+  use_tensorboard: true
+model:
+  features:
+  - 64
+  - 128
+  - 256
+  - 512
+  in_channels: 96
+  name: unet
+  out_channels: 48
+training:
+  batch_size: 8
+  device: mps
+  epochs: 75
+  learning_rate: 0.0001
+  num_workers: 0
+  pin_memory: true
+  weight_decay: 1.0e-05

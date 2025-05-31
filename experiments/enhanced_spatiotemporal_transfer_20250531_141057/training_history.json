@@ -1,0 +1,14 @@
+{
+  "train_loss": [],
+  "val_loss": [],
+  "test_loss": [],
+  "learning_rate": [],
+  "transfer_score": [],
+  "adaptation_loss": [],
+  "task_losses": {
+    "traffic": [],
+    "city": [],
+    "year": [],
+    "enhanced_traffic": []
+  }
+}

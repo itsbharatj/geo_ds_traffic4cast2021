@@ -140,6 +140,10 @@ dmypy.json
 /data_2020/
 /artifacts/
 
+# ignore dataset and raw data directories
+/src/data/DATASET
+/archive/data/raw
+
 # Ignore gitignore
 /.gitignore
-
+/.vscode

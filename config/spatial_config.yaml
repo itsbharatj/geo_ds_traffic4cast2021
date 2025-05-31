@@ -1,0 +1,20 @@
+base_config: "config/base.yaml"
+
+data:
+  root_dir: "/Users/ananyashukla/Desktop/Ananya_Shukla/Semester_6/GeoDS/NeurIPS2021-traffic4cast/src/data/DATASET/"
+  cities: ["BARCELONA", "MELBOURNE", "ANTWERP", "BANGKOK"]
+
+experiment:
+  type: "spatial_transfer" 
+  train_cities: ["ANTWERP", "BANGKOK", "BARCELONA"]
+  test_cities: ["MELBOURNE"]
+  years: ["2019", "2020"]
+  random_seed: 42
+  val_fraction: 0.1
+
+logging:
+  experiment_name: "spatial_transfer_experiment"
+
+training:
+  batch_size: 1
+  epochs: 50

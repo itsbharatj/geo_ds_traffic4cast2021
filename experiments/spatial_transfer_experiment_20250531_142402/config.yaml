@@ -1,0 +1,69 @@
+data:
+  channels: 8
+  cities:
+  - BARCELONA
+  - MELBOURNE
+  - NEWYORK
+  - CHICAGO
+  - ANTWERP
+  - VIENNA
+  - BERLIN
+  - BANGKOK
+  - MOSCOW
+  height: 495
+  input_timesteps: 12
+  limit_per_split: null
+  output_timesteps: 6
+  root_dir: ./data/raw
+  width: 436
+experiment:
+  adaptation_samples: null
+  num_cities: null
+  num_years: null
+  random_seed: 42
+  test_cities:
+  - MELBOURNE
+  test_city: null
+  test_target_year: null
+  test_train_year: null
+  test_years: null
+  train_cities:
+  - ANTWERP
+  - BANGKOK
+  - BARCELONA
+  train_years: &id001
+  - '2019'
+  - '2020'
+  type: spatial_transfer
+  val_fraction: 0.1
+  years: *id001
+logging:
+  experiment_name: spatial_transfer_experiment
+  log_interval: 100
+  save_checkpoints: true
+  save_dir: ./experiments
+  use_tensorboard: true
+model:
+  bilinear: false
+  features:
+  - 64
+  - 128
+  - 256
+  - 512
+  in_channels: 96
+  name: unet
+  out_channels: 48
+  use_attention: false
+  use_meta_learning: false
+training:
+  batch_size: 1
+  city_weight: 0.1
+  device: mps
+  enhanced_traffic_weight: 0.5
+  epochs: 50
+  learning_rate: 0.0001
+  num_workers: 0
+  pin_memory: true
+  traffic_weight: 1.0
+  weight_decay: 1.0e-05
+  year_weight: 0.1

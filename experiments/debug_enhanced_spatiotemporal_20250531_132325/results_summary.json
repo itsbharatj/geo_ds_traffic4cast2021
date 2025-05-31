@@ -1,0 +1,36 @@
+{
+  "experiment_type": "enhanced_spatiotemporal_transfer",
+  "best_val_loss": 5.473084449768066,
+  "final_train_loss": 29.95362518310547,
+  "final_test_loss": 6.086162424087524,
+  "training_epochs": 3,
+  "config": {
+    "learning_rate": 0.0001,
+    "batch_size": 2,
+    "model_features": [
+      32,
+      64,
+      128
+    ]
+  },
+  "best_transfer_score": 3.697225301712752,
+  "final_transfer_score": 3.697225301712752,
+  "experiment_config": {
+    "train_cities": [
+      "ANTWERP"
+    ],
+    "train_years": [
+      "2019"
+    ],
+    "test_city": "BARCELONA",
+    "test_train_year": "2019",
+    "test_target_year": "2020",
+    "adaptation_samples": 10
+  },
+  "loss_weights": {
+    "traffic": 1.0,
+    "city": 0.1,
+    "year": 0.1,
+    "enhanced_traffic": 0.5
+  }
+}

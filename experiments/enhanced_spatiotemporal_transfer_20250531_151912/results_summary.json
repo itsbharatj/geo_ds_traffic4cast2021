@@ -1,0 +1,32 @@
+{
+  "experiment_type": "enhanced_spatiotemporal_transfer",
+  "best_val_loss": Infinity,
+  "final_train_loss": null,
+  "final_test_loss": null,
+  "training_epochs": 0,
+  "config": {
+    "learning_rate": 0.0001,
+    "batch_size": 4,
+    "model_features": [
+      64,
+      128,
+      256,
+      512
+    ]
+  },
+  "best_transfer_score": Infinity,
+  "final_transfer_score": null,
+  "experiment_config": {
+    "train_cities": [
+      "ANTWERP",
+      "BANGKOK"
+    ],
+    "train_years": [
+      "2019",
+      "2020"
+    ],
+    "test_city": "BARCELONA",
+    "test_train_year": "2019",
+    "test_target_year": "2020"
+  }
+}
