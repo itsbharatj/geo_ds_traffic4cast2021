@@ -1,23 +1,24 @@
-# src/experiments/spatiotemporal_transfer.py
+# src/experiments/enhanced_spatiotemporal_transfer.py
 """
-Spatio-Temporal Transfer Learning Experiment Runner
+Enhanced Spatio-Temporal Transfer Learning Experiment
+Implements true spatio-temporal transfer with multi-task learning and few-shot adaptation
 """
 
 import logging
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
+import json
 
 import torch
 import numpy as np
 
 from ..utils.config import Config
-from ..data.splitter import ExperimentDataManager
-from ..data.dataset import create_data_loaders, get_dataset_stats
-from ..models.unet import create_unet_model
-from ..training.trainer import create_trainer
+from ..data.spatiotemporal_dataset import SpatioTemporalDataManager
+from ..models.multitask_unet import create_multitask_unet
+from ..training.spatiotemporal_trainer import create_spatiotemporal_trainer
 
 class SpatioTemporalTransferExperiment:
-    """Handles spatio-temporal transfer learning experiments"""
+    """Enhanced spatio-temporal transfer learning experiment with multi-task learning"""
     
     def __init__(self, config: Config):
         self.config = config
@@ -25,163 +26,214 @@ class SpatioTemporalTransferExperiment:
         
         # Validate configuration
         self._validate_config()
-    
+        
     def _validate_config(self):
         """Validate experiment configuration"""
-        if self.config.experiment.type != "spatiotemporal_transfer":
-            raise ValueError("Config must be for spatiotemporal_transfer experiment")
+        if self.config.experiment.type != "enhanced_spatiotemporal_transfer":
+            raise ValueError("Config must be for enhanced_spatiotemporal_transfer experiment")
             
-        if not self.config.experiment.train_years:
-            raise ValueError("train_years must be specified")
-            
-        if not self.config.experiment.test_years:
-            raise ValueError("test_years must be specified")
+        required_fields = [
+            'train_cities', 'train_years', 'test_city', 
+            'test_train_year', 'test_target_year'
+        ]
+        
+        for field in required_fields:
+            if not hasattr(self.config.experiment, field):
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Ensure test city is not in training cities
+        if self.config.experiment.test_city in self.config.experiment.train_cities:
+            raise ValueError("Test city cannot be in training cities for spatio-temporal transfer")
     
     def setup_data(self) -> Tuple[Any, Any, Any]:
-        """Setup data for spatio-temporal transfer experiment"""
-        logging.info("Setting up spatio-temporal transfer data...")
+        """Setup data for enhanced spatio-temporal transfer"""
         
-        data_manager = ExperimentDataManager(self.config)
-        train_dataset, val_dataset, test_dataset = data_manager.setup_spatiotemporal_transfer()
+        logging.info("Setting up enhanced spatio-temporal transfer data...")
+        
+        data_manager = SpatioTemporalDataManager(self.config)
+        train_dataset, adapt_dataset, test_dataset = data_manager.create_datasets()
         
         # Log dataset statistics
-        train_stats = get_dataset_stats(train_dataset)
-        val_stats = get_dataset_stats(val_dataset)
-        test_stats = get_dataset_stats(test_dataset)
+        logging.info("Enhanced Spatio-Temporal Transfer Data Setup:")
+        logging.info(f"  Training Cities: {self.config.experiment.train_cities}")
+        logging.info(f"  Training Years: {self.config.experiment.train_years}")
+        logging.info(f"  Test City: {self.config.experiment.test_city}")
+        logging.info(f"  Test Train Year: {self.config.experiment.test_train_year}")
+        logging.info(f"  Test Target Year: {self.config.experiment.test_target_year}")
         
-        logging.info("Spatio-Temporal Transfer Data Setup:")
-        logging.info(f"  Train years: {self.config.experiment.train_years}")
-        logging.info(f"  Test years: {self.config.experiment.test_years}")
-        logging.info(f"  Cities: {self.config.data.cities}")
-        logging.info(f"  Train samples: {train_stats['total_samples']} from {train_stats['year_counts']}")
-        logging.info(f"  Val samples: {val_stats['total_samples']} from {val_stats['year_counts']}")
-        logging.info(f"  Test samples: {test_stats['total_samples']} from {test_stats['year_counts']}")
+        logging.info(f"  Train samples: {len(train_dataset)}")
+        logging.info(f"    City distribution: {train_dataset.get_city_distribution()}")
+        logging.info(f"    Year distribution: {train_dataset.get_year_distribution()}")
         
-        return train_dataset, val_dataset, test_dataset
+        logging.info(f"  Adaptation samples: {len(adapt_dataset)}")
+        logging.info(f"  Test samples: {len(test_dataset)}")
+        
+        return train_dataset, adapt_dataset, test_dataset
     
-    def run_domain_adaptation_analysis(self) -> Dict[str, Any]:
-        """Analyze domain shift between train and test years"""
+    def analyze_domain_shift(self, train_dataset, adapt_dataset, test_dataset) -> Dict[str, Any]:
+        """Analyze domain shift between training and target domains"""
+        
         logging.info("Analyzing domain shift...")
         
-        # Setup data
-        train_dataset, val_dataset, test_dataset = self.setup_data()
-        
-        # Sample some data for analysis
-        def sample_dataset_statistics(dataset, num_samples=100):
+        def sample_statistics(dataset, num_samples=50):
             """Sample statistics from dataset"""
+            if len(dataset) == 0:
+                return {'mean': 0, 'std': 0, 'sparsity': 0}
+                
             indices = np.random.choice(len(dataset), min(num_samples, len(dataset)), replace=False)
             
-            volume_stats = []
-            speed_stats = []
-            
+            stats = []
             for idx in indices:
-                inputs, targets = dataset[idx]
+                inputs, targets, metadata = dataset[idx]
                 
-                # Convert to numpy if tensor
                 if torch.is_tensor(inputs):
-                    inputs = inputs.numpy()
-                if torch.is_tensor(targets):
-                    targets = targets.numpy()
+                    data = inputs.numpy()
+                else:
+                    data = inputs
                 
-                # Extract volume and speed channels
-                if inputs.ndim == 4:  # (T, H, W, C)
-                    volume_data = inputs[:, :, :, [0, 2, 4, 6]]  # Volume channels
-                    speed_data = inputs[:, :, :, [1, 3, 5, 7]]   # Speed channels
-                else:  # Handle other formats
-                    continue
-                
-                volume_stats.append({
-                    'mean': np.mean(volume_data),
-                    'std': np.std(volume_data),
-                    'max': np.max(volume_data),
-                    'sparsity': np.mean(volume_data == 0)
-                })
-                
-                speed_stats.append({
-                    'mean': np.mean(speed_data[volume_data > 0]) if np.any(volume_data > 0) else 0,
-                    'std': np.std(speed_data[volume_data > 0]) if np.any(volume_data > 0) else 0,
-                    'max': np.max(speed_data)
+                stats.append({
+                    'mean': np.mean(data),
+                    'std': np.std(data),
+                    'sparsity': np.mean(data == 0)
                 })
             
             return {
-                'volume': {k: np.mean([s[k] for s in volume_stats]) for k in volume_stats[0].keys()},
-                'speed': {k: np.mean([s[k] for s in speed_stats]) for k in speed_stats[0].keys()}
+                'mean': np.mean([s['mean'] for s in stats]),
+                'std': np.mean([s['std'] for s in stats]),
+                'sparsity': np.mean([s['sparsity'] for s in stats])
             }
         
-        train_stats = sample_dataset_statistics(train_dataset)
-        test_stats = sample_dataset_statistics(test_dataset)
+        # Compute statistics for each domain
+        train_stats = sample_statistics(train_dataset)
+        adapt_stats = sample_statistics(adapt_dataset)
+        test_stats = sample_statistics(test_dataset)
         
-        # Calculate domain shift metrics
-        domain_shift = {
-            'volume_mean_shift': abs(train_stats['volume']['mean'] - test_stats['volume']['mean']),
-            'volume_sparsity_shift': abs(train_stats['volume']['sparsity'] - test_stats['volume']['sparsity']),
-            'speed_mean_shift': abs(train_stats['speed']['mean'] - test_stats['speed']['mean']),
+        # Calculate domain shifts
+        spatial_shift = {
+            'mean_shift': abs(train_stats['mean'] - test_stats['mean']),
+            'sparsity_shift': abs(train_stats['sparsity'] - test_stats['sparsity'])
+        }
+        
+        temporal_shift = {
+            'mean_shift': abs(adapt_stats['mean'] - test_stats['mean']),
+            'sparsity_shift': abs(adapt_stats['sparsity'] - test_stats['sparsity'])
+        }
+        
+        domain_analysis = {
             'train_stats': train_stats,
-            'test_stats': test_stats
+            'adapt_stats': adapt_stats,
+            'test_stats': test_stats,
+            'spatial_shift': spatial_shift,
+            'temporal_shift': temporal_shift
         }
         
         logging.info("Domain Shift Analysis:")
-        logging.info(f"  Volume mean shift: {domain_shift['volume_mean_shift']:.4f}")
-        logging.info(f"  Volume sparsity shift: {domain_shift['volume_sparsity_shift']:.4f}")
-        logging.info(f"  Speed mean shift: {domain_shift['speed_mean_shift']:.4f}")
+        logging.info(f"  Spatial shift (train→test): mean={spatial_shift['mean_shift']:.4f}, sparsity={spatial_shift['sparsity_shift']:.4f}")
+        logging.info(f"  Temporal shift (adapt→test): mean={temporal_shift['mean_shift']:.4f}, sparsity={temporal_shift['sparsity_shift']:.4f}")
         
-        return domain_shift
+        return domain_analysis
     
-    def run_progressive_transfer(self) -> Dict[str, Any]:
-        """Run progressive transfer: train on increasing amounts of target domain data"""
+    def run_ablation_study(self) -> Dict[str, Any]:
+        """Run ablation study on different components"""
         
-        # First, train on source domain only
-        logging.info("Step 1: Training on source domain only...")
-        source_results = self.run_single_experiment()
+        logging.info("Running ablation study...")
         
-        # Then, fine-tune on increasing amounts of target domain data
-        target_fractions = [0.1, 0.25, 0.5, 0.75, 1.0]
-        progressive_results = []
+        ablation_configs = [
+            {"name": "baseline", "use_attention": False, "use_meta_learning": False},
+            {"name": "with_attention", "use_attention": True, "use_meta_learning": False},
+            {"name": "with_meta", "use_attention": False, "use_meta_learning": True},
+            {"name": "full_model", "use_attention": True, "use_meta_learning": True},
+        ]
         
-        for fraction in target_fractions:
-            logging.info(f"Step 2: Fine-tuning on {fraction*100:.0f}% of target domain...")
+        ablation_results = {}
+        
+        for config_variant in ablation_configs:
+            logging.info(f"Testing variant: {config_variant['name']}")
             
-            # Modify config to include some target domain data in training
-            modified_config = self.config
-            modified_config.experiment.target_fraction = fraction
+            # Modify config for this variant
+            original_attention = getattr(self.config.model, 'use_attention', True)
+            original_meta = getattr(self.config.model, 'use_meta_learning', True)
             
-            # TODO: Implement mixed training with source + target data
-            # This would require modifying the data splitter
+            self.config.model.use_attention = config_variant['use_attention']
+            self.config.model.use_meta_learning = config_variant['use_meta_learning']
             
-            # For now, just log the intent
-            logging.info(f"Would fine-tune with {fraction*100:.0f}% target data")
+            try:
+                # Run experiment with this configuration
+                results = self.run_single_experiment()
+                ablation_results[config_variant['name']] = {
+                    'transfer_score': results['best_transfer_score'],
+                    'final_test_loss': results['final_test_loss'],
+                    'config': config_variant
+                }
+                
+            except Exception as e:
+                logging.error(f"Ablation variant {config_variant['name']} failed: {e}")
+                ablation_results[config_variant['name']] = {'error': str(e)}
+            
+            finally:
+                # Restore original config
+                self.config.model.use_attention = original_attention
+                self.config.model.use_meta_learning = original_meta
         
-        return {
-            'source_only_results': source_results,
-            'progressive_results': progressive_results
-        }
+        return ablation_results
     
     def run_single_experiment(self) -> Dict[str, Any]:
-        """Run a single spatio-temporal transfer experiment"""
+        """Run a single enhanced spatio-temporal transfer experiment"""
         
         # Setup data
-        train_dataset, val_dataset, test_dataset = self.setup_data()
-        train_loader, val_loader, test_loader = create_data_loaders(
-            self.config, train_dataset, val_dataset, test_dataset
+        train_dataset, adapt_dataset, test_dataset = self.setup_data()
+        
+        # Analyze domain shift
+        domain_analysis = self.analyze_domain_shift(train_dataset, adapt_dataset, test_dataset)
+        
+        # Create data loaders
+        data_manager = SpatioTemporalDataManager(self.config)
+        train_loader, adapt_loader, test_loader = data_manager.create_data_loaders(
+            train_dataset, adapt_dataset, test_dataset
         )
         
+        # Update config with dataset information
+        self.config.experiment.num_cities = train_dataset.get_num_cities()
+        self.config.experiment.num_years = train_dataset.get_num_years()
+        
         # Create model
-        model = create_unet_model(self.config)
+        model = create_multitask_unet(self.config)
+        
+        # Log model information
+        if hasattr(model, 'get_model_info'):
+            model_info = model.get_model_info()
+            logging.info(f"Model created:")
+            logging.info(f"  Architecture: Multi-task UNet")
+            logging.info(f"  Parameters: {model_info.get('trainable_parameters', 'N/A')}")
+            logging.info(f"  Input channels: {model_info.get('in_channels', 'N/A')}")
+            logging.info(f"  Output channels: {model_info.get('out_channels', 'N/A')}")
+            logging.info(f"  Use attention: {getattr(model, 'use_attention', 'N/A')}")
+            logging.info(f"  Use meta-learning: {getattr(model, 'use_meta_learning', 'N/A')}")
         
         # Create trainer
-        trainer = create_trainer(model, train_loader, val_loader, test_loader, self.config)
+        trainer = create_spatiotemporal_trainer(
+            model, train_loader, adapt_loader, test_loader, self.config
+        )
         
         # Train model
         training_history = trainer.fit()
         
         # Collect results
         results = {
-            'train_years': self.config.experiment.train_years,
-            'test_years': self.config.experiment.test_years,
-            'cities': self.config.data.cities,
-            'best_val_loss': trainer.best_val_loss,
+            'experiment_type': 'enhanced_spatiotemporal_transfer',
+            'config': {
+                'train_cities': self.config.experiment.train_cities,
+                'train_years': self.config.experiment.train_years,
+                'test_city': self.config.experiment.test_city,
+                'test_train_year': self.config.experiment.test_train_year,
+                'test_target_year': self.config.experiment.test_target_year,
+                'adaptation_samples': getattr(self.config.experiment, 'adaptation_samples', 100)
+            },
+            'domain_analysis': domain_analysis,
+            'best_transfer_score': trainer.best_transfer_score,
             'final_train_loss': training_history['train_loss'][-1],
             'final_test_loss': training_history['test_loss'][-1],
+            'final_transfer_score': training_history['transfer_score'][-1],
             'training_history': training_history,
             'model_path': str(trainer.save_dir / "final_model.pth"),
             'experiment_dir': str(trainer.save_dir)
@@ -189,21 +241,109 @@ class SpatioTemporalTransferExperiment:
         
         return results
     
-    def run(self) -> Dict[str, Any]:
-        """Run the spatio-temporal transfer experiment"""
-        logging.info("Starting spatio-temporal transfer learning experiment...")
+    def run_cross_city_validation(self) -> Dict[str, Any]:
+        """Run cross-validation across different target cities"""
         
-        # Run domain analysis
-        domain_analysis = self.run_domain_adaptation_analysis()
+        available_cities = ["BARCELONA", "MELBOURNE", "NEWYORK", "CHICAGO", "ANTWERP", "VIENNA", "BERLIN", "BANGKOK", "MOSCOW"]
         
-        # Run main experiment
+        # Define different target cities for validation
+        target_cities = [city for city in available_cities 
+                        if city not in self.config.experiment.train_cities]
+        
+        if len(target_cities) < 2:
+            logging.warning("Not enough cities for cross-validation")
+            return {}
+        
+        results = []
+        original_test_city = self.config.experiment.test_city
+        
+        for target_city in target_cities[:3]:  # Limit to 3 for computational efficiency
+            logging.info(f"\n{'='*60}")
+            logging.info(f"CROSS-VALIDATION WITH TARGET CITY: {target_city}")
+            logging.info(f"{'='*60}")
+            
+            # Update config for this target city
+            self.config.experiment.test_city = target_city
+            
+            try:
+                city_results = self.run_single_experiment()
+                city_results['target_city'] = target_city
+                results.append(city_results)
+                
+            except Exception as e:
+                logging.error(f"Cross-validation for city {target_city} failed: {e}")
+                continue
+        
+        # Restore original config
+        self.config.experiment.test_city = original_test_city
+        
+        # Aggregate results
+        if results:
+            avg_transfer_score = np.mean([r['best_transfer_score'] for r in results])
+            std_transfer_score = np.std([r['best_transfer_score'] for r in results])
+            
+            summary = {
+                'experiment_type': 'cross_city_validation',
+                'num_cities': len(results),
+                'avg_transfer_score': avg_transfer_score,
+                'std_transfer_score': std_transfer_score,
+                'city_results': results,
+                'best_city': min(results, key=lambda x: x['best_transfer_score'])['target_city'],
+                'worst_city': max(results, key=lambda x: x['best_transfer_score'])['target_city']
+            }
+            
+            logging.info(f"\nCross-City Validation Summary:")
+            logging.info(f"  Average transfer score: {avg_transfer_score:.4f} ± {std_transfer_score:.4f}")
+            logging.info(f"  Best target city: {summary['best_city']}")
+            logging.info(f"  Worst target city: {summary['worst_city']}")
+            
+            return summary
+        else:
+            raise RuntimeError("All cross-validation experiments failed")
+    
+    def run_comprehensive_analysis(self) -> Dict[str, Any]:
+        """Run comprehensive analysis including ablation and cross-validation"""
+        
+        logging.info("Starting comprehensive enhanced spatio-temporal transfer analysis...")
+        
+        # Main experiment
         main_results = self.run_single_experiment()
         
-        # Combine results
-        results = {
-            'experiment_type': 'spatiotemporal_transfer',
-            'domain_analysis': domain_analysis,
-            'main_results': main_results
+        # Ablation study
+        try:
+            ablation_results = self.run_ablation_study()
+        except Exception as e:
+            logging.error(f"Ablation study failed: {e}")
+            ablation_results = {}
+        
+        # Cross-city validation
+        try:
+            cross_city_results = self.run_cross_city_validation()
+        except Exception as e:
+            logging.error(f"Cross-city validation failed: {e}")
+            cross_city_results = {}
+        
+        # Comprehensive results
+        comprehensive_results = {
+            'experiment_type': 'comprehensive_enhanced_spatiotemporal_transfer',
+            'main_experiment': main_results,
+            'ablation_study': ablation_results,
+            'cross_city_validation': cross_city_results,
+            'summary': {
+                'best_transfer_score': main_results['best_transfer_score'],
+                'spatial_shift': main_results['domain_analysis']['spatial_shift'],
+                'temporal_shift': main_results['domain_analysis']['temporal_shift']
+            }
         }
         
-        return results
+        return comprehensive_results
+    
+    def run(self) -> Dict[str, Any]:
+        """Run the enhanced spatio-temporal transfer experiment"""
+        logging.info("Starting enhanced spatio-temporal transfer learning experiment...")
+        
+        # Check if comprehensive analysis is requested
+        if hasattr(self.config.experiment, 'comprehensive_analysis') and self.config.experiment.comprehensive_analysis:
+            return self.run_comprehensive_analysis()
+        else:
+            return self.run_single_experiment()

@@ -1,4 +1,4 @@
-# src/data/splitters.py
+# src/data/splitter.py
 import logging
 from typing import List, Tuple, Dict, Optional
 from pathlib import Path
@@ -152,6 +152,105 @@ class TrafficDataSplitter:
         
         return train_dataset, val_dataset, test_dataset
     
+    def enhanced_spatiotemporal_transfer_split(self,
+                                             train_cities: List[str],
+                                             train_years: List[str],
+                                             test_city: str,
+                                             test_train_year: str,
+                                             test_target_year: str,
+                                             adaptation_samples: int = 100,
+                                             val_fraction: float = 0.1,
+                                             transform: Optional[TrafficDataTransform] = None,
+                                             limit_per_split: Optional[int] = None) -> Tuple[EnhancedTrafficDataset, EnhancedTrafficDataset, EnhancedTrafficDataset]:
+        """
+        Create enhanced spatio-temporal transfer split for few-shot adaptation
+        
+        Args:
+            train_cities: Cities to use for training (multi-task)
+            train_years: Years to use for training
+            test_city: Target city for transfer (not in train_cities)
+            test_train_year: Year from test city for adaptation
+            test_target_year: Target year to predict in test city
+            adaptation_samples: Number of samples from test city for adaptation
+            val_fraction: Fraction of training data for validation
+            transform: Transform to apply to data
+            limit_per_split: Limit samples per split for debugging
+            
+        Returns:
+            Tuple of (train_dataset, adapt_dataset, test_dataset)
+        """
+        logging.info(f"Creating enhanced spatio-temporal transfer split:")
+        logging.info(f"  Train cities: {train_cities}")
+        logging.info(f"  Train years: {train_years}")
+        logging.info(f"  Test city: {test_city}")
+        logging.info(f"  Test train year: {test_train_year}")
+        logging.info(f"  Test target year: {test_target_year}")
+        logging.info(f"  Adaptation samples: {adaptation_samples}")
+        
+        # Validate that test city is not in training cities
+        if test_city in train_cities:
+            raise ValueError(f"Test city '{test_city}' cannot be in training cities for spatio-temporal transfer")
+        
+        # 1. Multi-task training dataset (multiple cities and years)
+        train_dataset = EnhancedTrafficDataset(
+            root_dir=self.root_dir,
+            cities=train_cities,
+            years=train_years,
+            transform=transform,
+            limit=limit_per_split,
+            return_metadata=True  # Enable multi-task learning
+        )
+        
+        # 2. Adaptation dataset (test city, source year - limited samples)
+        full_adapt_dataset = EnhancedTrafficDataset(
+            root_dir=self.root_dir,
+            cities=[test_city],
+            years=[test_train_year],
+            transform=transform,
+            return_metadata=True
+        )
+        
+        # Sample limited adaptation data
+        adapt_dataset = self._sample_limited_dataset(full_adapt_dataset, adaptation_samples)
+        
+        # 3. Test dataset (test city, target year)
+        test_dataset = EnhancedTrafficDataset(
+            root_dir=self.root_dir,
+            cities=[test_city],
+            years=[test_target_year],
+            transform=transform,
+            limit=limit_per_split,
+            return_metadata=True
+        )
+        
+        # 4. Validation dataset (subset of training data)
+        if val_fraction > 0:
+            train_dataset, val_dataset = self._split_dataset_samples(train_dataset, val_fraction)
+        else:
+            val_dataset = adapt_dataset  # Use adaptation data as validation
+        
+        # Log enhanced dataset statistics
+        self._log_enhanced_split_stats(train_dataset, adapt_dataset, test_dataset, val_dataset)
+        
+        return train_dataset, adapt_dataset, test_dataset
+    
+    def _sample_limited_dataset(self, dataset: EnhancedTrafficDataset, num_samples: int):
+        """Create a limited sample dataset for few-shot learning"""
+        if len(dataset) <= num_samples:
+            return dataset
+        
+        # Create a new dataset with limited samples
+        limited_dataset = EnhancedTrafficDataset(
+            root_dir=dataset.root_dir,
+            cities=dataset.cities,
+            years=dataset.years,
+            transform=dataset.transform,
+            limit=num_samples,
+            return_metadata=dataset.return_metadata
+        )
+        
+        return limited_dataset
+    
     def _split_dataset_samples(self, dataset: EnhancedTrafficDataset, 
                               val_fraction: float) -> Tuple[EnhancedTrafficDataset, EnhancedTrafficDataset]:
         """Split a single dataset into train/val by sampling"""
@@ -176,7 +275,8 @@ class TrafficDataSplitter:
             cities=dataset.cities,
             years=dataset.years,
             transform=dataset.transform,
-            limit=dataset.limit
+            limit=dataset.limit,
+            return_metadata=dataset.return_metadata
         )
         train_dataset.files = train_files
         train_dataset._calculate_dataset_size()
@@ -186,7 +286,8 @@ class TrafficDataSplitter:
             cities=dataset.cities,
             years=dataset.years,
             transform=dataset.transform,
-            limit=dataset.limit
+            limit=dataset.limit,
+            return_metadata=dataset.return_metadata
         )
         val_dataset.files = val_files
         val_dataset._calculate_dataset_size()
@@ -211,6 +312,29 @@ class TrafficDataSplitter:
         
         logging.info(f"  Testing: {test_stats['total_samples']} samples from {test_stats['total_files']} files")
         logging.info(f"    Cities: {test_stats['city_counts']}")  
+        logging.info(f"    Years: {test_stats['year_counts']}")
+    
+    def _log_enhanced_split_stats(self, train_dataset, adapt_dataset, test_dataset, val_dataset):
+        """Log statistics for enhanced spatio-temporal splits"""
+        
+        train_stats = get_dataset_stats(train_dataset)
+        adapt_stats = get_dataset_stats(adapt_dataset)
+        test_stats = get_dataset_stats(test_dataset)
+        val_stats = get_dataset_stats(val_dataset)
+        
+        logging.info("Enhanced Spatio-Temporal Split Statistics:")
+        logging.info(f"  Training (Multi-task): {train_stats['total_samples']} samples")
+        logging.info(f"    Cities: {train_stats['city_counts']}")
+        logging.info(f"    Years: {train_stats['year_counts']}")
+        
+        logging.info(f"  Validation: {val_stats['total_samples']} samples")
+        
+        logging.info(f"  Adaptation (Few-shot): {adapt_stats['total_samples']} samples")
+        logging.info(f"    Cities: {adapt_stats['city_counts']}")
+        logging.info(f"    Years: {adapt_stats['year_counts']}")
+        
+        logging.info(f"  Testing (Transfer): {test_stats['total_samples']} samples")
+        logging.info(f"    Cities: {test_stats['city_counts']}")
         logging.info(f"    Years: {test_stats['year_counts']}")
 
 class ExperimentDataManager:
@@ -252,12 +376,28 @@ class ExperimentDataManager:
             limit_per_split=getattr(self.config.data, 'limit_per_split', None)
         )
     
-    def setup_experiment_data(self) -> Tuple[EnhancedTrafficDataset, EnhancedTrafficDataset, EnhancedTrafficDataset]:
+    def setup_enhanced_spatiotemporal_transfer(self) -> Tuple[EnhancedTrafficDataset, EnhancedTrafficDataset, EnhancedTrafficDataset]:
+        """Setup data for enhanced spatio-temporal transfer experiment"""
+        return self.splitter.enhanced_spatiotemporal_transfer_split(
+            train_cities=self.config.experiment.train_cities,
+            train_years=self.config.experiment.train_years,
+            test_city=self.config.experiment.test_city,
+            test_train_year=self.config.experiment.test_train_year,
+            test_target_year=self.config.experiment.test_target_year,
+            adaptation_samples=getattr(self.config.experiment, 'adaptation_samples', 100),
+            val_fraction=self.config.experiment.val_fraction,
+            transform=self.transform,
+            limit_per_split=getattr(self.config.data, 'limit_per_split', None)
+        )
+    
+    def setup_experiment_data(self):
         """Setup data based on experiment type"""
         if self.config.experiment.type == "spatial_transfer":
             return self.setup_spatial_transfer()
         elif self.config.experiment.type == "spatiotemporal_transfer":
             return self.setup_spatiotemporal_transfer()
+        elif self.config.experiment.type == "enhanced_spatiotemporal_transfer":
+            return self.setup_enhanced_spatiotemporal_transfer()
         else:
             raise ValueError(f"Unknown experiment type: {self.config.experiment.type}")
 

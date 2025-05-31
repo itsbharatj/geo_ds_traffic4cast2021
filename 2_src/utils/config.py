@@ -12,6 +12,9 @@ class ModelConfig:
     in_channels: int = 96  # 12 timesteps * 8 channels
     out_channels: int = 48  # 6 timesteps * 8 channels
     features: list = None
+    use_attention: bool = False
+    use_meta_learning: bool = False
+    bilinear: bool = False  # Add this for compatibility
     
     def __post_init__(self):
         if self.features is None:
@@ -26,6 +29,11 @@ class TrainingConfig:
     device: str = "auto"
     num_workers: Optional[int] = None  # Set to None to use default
     pin_memory: bool = True
+    # Multi-task loss weights
+    traffic_weight: float = 1.0
+    city_weight: float = 0.1
+    year_weight: float = 0.1
+    enhanced_traffic_weight: float = 0.5
     
 @dataclass
 class DataConfig:
@@ -50,10 +58,23 @@ class ExperimentConfig:
     test_cities: list = None
     train_years: list = None
     test_years: list = None
+    years: list = None  # <--- Add this for backward compatibility
+    test_city: str = None
+    test_train_year: str = None
+    test_target_year: str = None
+    adaptation_samples: int = 100
+    num_cities: int = 1
+    num_years: int = 1
     val_fraction: float = 0.1
     random_seed: int = 42
-    
-    def __post_init__(self):
+
+    def __init__(self, **kwargs):
+        # Set all known fields from kwargs, ignore unknown
+        for field in self.__dataclass_fields__:
+            setattr(self, field, kwargs.pop(field, None))
+        # Backward compatibility: if years is set and train_years is None, use years
+        if self.years is not None and self.train_years is None:
+            self.train_years = self.years
         if self.type == "spatial_transfer":
             if self.train_cities is None:
                 self.train_cities = ["ANTWERP", "BANGKOK", "MOSCOW"]
@@ -64,6 +85,7 @@ class ExperimentConfig:
                 self.train_years = ["2019"]
             if self.test_years is None:
                 self.test_years = ["2020"]
+        # Ignore any extra keys in kwargs
 
 @dataclass
 class LoggingConfig:

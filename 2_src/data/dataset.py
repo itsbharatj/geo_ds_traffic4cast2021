@@ -3,8 +3,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
-from typing import List, Optional, Callable, Tuple, Any
+from typing import List, Optional, Callable, Tuple, Any, Dict
 import logging
+from collections import defaultdict
 
 # Import existing utilities (modify paths as needed)
 from utils.constants import MAX_TEST_SLOT_INDEX
@@ -22,7 +23,8 @@ class EnhancedTrafficDataset(Dataset):
                  transform: Optional[Callable] = None,
                  limit: Optional[int] = None,
                  input_timesteps: int = 12,
-                 output_timesteps: int = 6):
+                 output_timesteps: int = 6,
+                 return_metadata: bool = False):
         """
         Enhanced dataset for Traffic4Cast data
         
@@ -35,6 +37,7 @@ class EnhancedTrafficDataset(Dataset):
             limit: Maximum number of samples (None = no limit)
             input_timesteps: Number of input time steps (default: 12)
             output_timesteps: Number of output time steps (default: 6)
+            return_metadata: Whether to return metadata for multi-task learning
         """
         self.root_dir = Path(root_dir)
         self.cities = cities
@@ -44,6 +47,7 @@ class EnhancedTrafficDataset(Dataset):
         self.limit = limit
         self.input_timesteps = input_timesteps
         self.output_timesteps = output_timesteps
+        self.return_metadata = return_metadata
         
         # Load and filter files
         self.files = self._load_and_filter_files()
@@ -51,6 +55,12 @@ class EnhancedTrafficDataset(Dataset):
         
         # Calculate total samples
         self._calculate_dataset_size()
+        
+        # For multi-task learning
+        self.city_labels = {}
+        self.year_labels = {}
+        if self.return_metadata:
+            self._build_label_mappings()
         
     def _load_and_filter_files(self) -> List[Path]:
         """Load and filter files based on cities and years"""
@@ -83,11 +93,26 @@ class EnhancedTrafficDataset(Dataset):
             total_samples = min(total_samples, self.limit)
             
         self.total_samples = total_samples
+    
+    def _build_label_mappings(self):
+        """Build label mappings for multi-task learning"""
+        cities = set()
+        years = set()
+        
+        for file_path in self.files:
+            city = self.get_city_from_file(file_path)
+            year = self.get_year_from_file(file_path)
+            cities.add(city)
+            years.add(year)
+        
+        # Create label mappings
+        self.city_labels = {city: idx for idx, city in enumerate(sorted(cities))}
+        self.year_labels = {year: idx for idx, year in enumerate(sorted(years))}
         
     def __len__(self) -> int:
         return self.total_samples
     
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int):
         """Get a single sample"""
         if idx >= len(self):
             raise IndexError(f"Index {idx} out of range for dataset of size {len(self)}")
@@ -125,8 +150,21 @@ class EnhancedTrafficDataset(Dataset):
         if self.transform is not None:
             input_tensor = self.transform(input_tensor)
             output_tensor = self.transform(output_tensor)
-            
-        return input_tensor, output_tensor
+        
+        # Return with or without metadata
+        if self.return_metadata:
+            city = self.get_city_from_file(file_path)
+            year = self.get_year_from_file(file_path)
+            metadata = {
+                'city': city,
+                'year': year,
+                'city_label': self.city_labels.get(city, 0),
+                'year_label': self.year_labels.get(year, 0),
+                'file_path': str(file_path)
+            }
+            return input_tensor, output_tensor, metadata
+        else:
+            return input_tensor, output_tensor
     
     def get_city_from_file(self, file_path: Path) -> str:
         """Extract city name from file path"""
@@ -159,6 +197,30 @@ class EnhancedTrafficDataset(Dataset):
                 'samples': MAX_TEST_SLOT_INDEX
             })
         return info
+    
+    def get_num_cities(self) -> int:
+        """Get number of unique cities"""
+        return len(self.city_labels)
+    
+    def get_num_years(self) -> int:
+        """Get number of unique years"""
+        return len(self.year_labels)
+    
+    def get_city_distribution(self) -> Dict[str, int]:
+        """Get distribution of samples per city"""
+        distribution = defaultdict(int)
+        file_info = self.get_file_info()
+        for info in file_info:
+            distribution[info['city']] += info['samples']
+        return dict(distribution)
+    
+    def get_year_distribution(self) -> Dict[str, int]:
+        """Get distribution of samples per year"""
+        distribution = defaultdict(int)
+        file_info = self.get_file_info()
+        for info in file_info:
+            distribution[info['year']] += info['samples']
+        return dict(distribution)
 
 class TrafficDataTransform:
     """Standard transforms for traffic data"""

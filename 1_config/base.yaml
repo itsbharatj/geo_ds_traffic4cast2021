@@ -3,8 +3,7 @@
 
 data:
   root_dir: "./data/raw"
-  cities: ["BARCELONA", "MELBOURNE", "NEWYORK", "CHICAGO", 
-           "ANTWERP", "VIENNA", "BERLIN", "BANGKOK", "MOSCOW"]
+  cities: ["BARCELONA", "MELBOURNE", "ANTWERP", "BANGKOK"]
   input_timesteps: 12
   output_timesteps: 6
   channels: 8
@@ -29,7 +28,7 @@ training:
   pin_memory: true
 
 experiment:
-  type: "spatial_transfer"  # or "spatiotemporal_transfer"
+  type: "spatiotemporal_transfer"  # or "spatial_transfer" or "spatiotemporal_transfer"
   random_seed: 42
   val_fraction: 0.1
 
