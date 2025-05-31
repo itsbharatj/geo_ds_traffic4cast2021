@@ -286,7 +286,7 @@ class EnhancedTraffic4CastTrainer:
             return self._train_epoch_standard()
     
     def _train_epoch_standard(self) -> Dict[str, float]:
-        """Standard training epoch with progress bar"""
+        """Standard training epoch with progress bar showing MSE explicitly"""
         total_loss = 0.0
         accumulated_metrics = {}
         
@@ -295,7 +295,7 @@ class EnhancedTraffic4CastTrainer:
             self.train_loader, 
             desc=f"Train Epoch {self.current_epoch}",
             leave=False,
-            ncols=120
+            ncols=140  # Increased width for more metrics
         )
         
         for batch_idx, batch_data in enumerate(pbar):
@@ -322,8 +322,8 @@ class EnhancedTraffic4CastTrainer:
             # Update statistics
             total_loss += loss.item()
             
-            # Compute detailed metrics every few batches
-            if batch_idx % 10 == 0:
+            # Compute detailed metrics every few batches for MSE tracking
+            if batch_idx % 5 == 0:  # More frequent for better MSE tracking
                 with torch.no_grad():
                     batch_metrics = self.metrics_calculator.compute_competition_metrics(
                         outputs.detach(), targets.detach()
@@ -335,18 +335,38 @@ class EnhancedTraffic4CastTrainer:
                             accumulated_metrics[key] = []
                         accumulated_metrics[key].append(value)
             
-            # Update progress bar
+            # Update progress bar with key metrics including MSE
+            current_avg_loss = total_loss / (batch_idx + 1)
+            
+            # Get latest MSE values if available
+            latest_mse = accumulated_metrics.get('mse', [current_avg_loss])[-1] if accumulated_metrics.get('mse') else current_avg_loss
+            latest_mse_w = accumulated_metrics.get('mse_wiedemann', [current_avg_loss])[-1] if accumulated_metrics.get('mse_wiedemann') else current_avg_loss
+            
             pbar.set_postfix({
                 'loss': f"{loss.item():.4f}",
-                'avg_loss': f"{total_loss/(batch_idx+1):.4f}"
+                'avg_loss': f"{current_avg_loss:.4f}",
+                'mse': f"{latest_mse:.4f}",
+                'mse_w': f"{latest_mse_w:.4f}"
             })
             
-            # Log to wandb
+            # Log to wandb with explicit MSE
             if self.wandb_logger and batch_idx % 50 == 0:
-                self.wandb_logger.log_metrics({
+                log_data = {
                     'train_batch_loss': loss.item(),
                     'train_lr': self.main_optimizer.param_groups[0]['lr']
-                }, step=self.current_epoch * len(self.train_loader) + batch_idx, commit=False)
+                }
+                
+                # Add MSE if available
+                if accumulated_metrics.get('mse'):
+                    log_data['train_batch_mse'] = latest_mse
+                if accumulated_metrics.get('mse_wiedemann'):
+                    log_data['train_batch_mse_wiedemann'] = latest_mse_w
+                    
+                self.wandb_logger.log_metrics(
+                    log_data, 
+                    step=self.current_epoch * len(self.train_loader) + batch_idx, 
+                    commit=False
+                )
         
         # Calculate average metrics
         avg_metrics = {}
@@ -356,119 +376,16 @@ class EnhancedTraffic4CastTrainer:
         avg_loss = total_loss / len(self.train_loader)
         avg_metrics['loss'] = avg_loss
         
+        # Ensure MSE metrics are present
+        if 'mse' not in avg_metrics:
+            avg_metrics['mse'] = avg_loss  # Fallback
+        if 'mse_wiedemann' not in avg_metrics:
+            avg_metrics['mse_wiedemann'] = avg_loss  # Fallback
+        
         return avg_metrics
     
-    def _train_epoch_enhanced(self) -> Dict[str, float]:
-        """Enhanced spatio-temporal training epoch with multi-task learning"""
-        total_losses = {
-            'total': 0.0,
-            'traffic': 0.0,
-            'city': 0.0,
-            'year': 0.0,
-            'enhanced_traffic': 0.0
-        }
-        accumulated_metrics = {}
-        
-        # Setup progress bar
-        pbar = tqdm(
-            self.train_loader,
-            desc=f"Enhanced Train Epoch {self.current_epoch}",
-            leave=False,
-            ncols=140
-        )
-        
-        for batch_idx, batch_data in enumerate(pbar):
-            inputs, targets, metadata = self._handle_batch_data(batch_data)
-            city_labels, year_labels = self._extract_labels_from_metadata(metadata)
-            
-            # Move data to device
-            inputs = inputs.to(self.device)
-            targets = targets.to(self.device)
-            
-            # Forward pass
-            self.main_optimizer.zero_grad()
-            outputs = self.model(inputs, metadata, mode="train")
-            
-            # Handle output format
-            outputs, targets = self._handle_output_format(outputs, targets)
-            
-            # Compute multi-task losses
-            traffic_loss = self.traffic_criterion(outputs['traffic'], targets)
-            
-            city_loss = torch.tensor(0.0).to(self.device)
-            year_loss = torch.tensor(0.0).to(self.device)
-            enhanced_traffic_loss = torch.tensor(0.0).to(self.device)
-            
-            if city_labels is not None and 'city' in outputs:
-                city_loss = self.city_criterion(outputs['city'], city_labels)
-            
-            if year_labels is not None and 'year' in outputs:
-                year_loss = self.year_criterion(outputs['year'], year_labels)
-            
-            if 'enhanced_traffic' in outputs:
-                enhanced_traffic_loss = self.traffic_criterion(outputs['enhanced_traffic'], targets)
-            
-            # Combined loss
-            total_loss = (
-                self.loss_weights['traffic'] * traffic_loss +
-                self.loss_weights['city'] * city_loss +
-                self.loss_weights['year'] * year_loss +
-                self.loss_weights['enhanced_traffic'] * enhanced_traffic_loss
-            )
-            
-            # Backward pass
-            total_loss.backward()
-            self.main_optimizer.step()
-            
-            # Update statistics
-            total_losses['total'] += total_loss.item()
-            total_losses['traffic'] += traffic_loss.item()
-            total_losses['city'] += city_loss.item()
-            total_losses['year'] += year_loss.item()
-            total_losses['enhanced_traffic'] += enhanced_traffic_loss.item()
-            
-            # Compute detailed metrics every few batches
-            if batch_idx % 10 == 0:
-                with torch.no_grad():
-                    batch_metrics = self.metrics_calculator.compute_competition_metrics(
-                        outputs['traffic'].detach(), targets.detach()
-                    )
-                    
-                    # Accumulate metrics
-                    for key, value in batch_metrics.items():
-                        if key not in accumulated_metrics:
-                            accumulated_metrics[key] = []
-                        accumulated_metrics[key].append(value)
-            
-            # Update progress bar
-            pbar.set_postfix({
-                'total': f"{total_loss.item():.4f}",
-                'traffic': f"{traffic_loss.item():.4f}",
-                'city': f"{city_loss.item():.3f}",
-                'year': f"{year_loss.item():.3f}"
-            })
-            
-            # Log to wandb
-            if self.wandb_logger and batch_idx % 50 == 0:
-                self.wandb_logger.log_metrics({
-                    'train_batch_total_loss': total_loss.item(),
-                    'train_batch_traffic_loss': traffic_loss.item(),
-                    'train_batch_city_loss': city_loss.item(),
-                    'train_batch_year_loss': year_loss.item(),
-                    'train_lr': self.main_optimizer.param_groups[0]['lr']
-                }, step=self.current_epoch * len(self.train_loader) + batch_idx, commit=False)
-        
-        # Calculate average losses and metrics
-        avg_losses = {k: v / len(self.train_loader) for k, v in total_losses.items()}
-        
-        # Add averaged detailed metrics
-        for key, values in accumulated_metrics.items():
-            avg_losses[key] = np.mean(values)
-        
-        return avg_losses
-    
     def validate_epoch(self) -> Dict[str, float]:
-        """Validate model on validation set with progress bar"""
+        """Validate model with explicit MSE computation and display"""
         self.model.eval()
         total_loss = 0.0
         
@@ -480,8 +397,11 @@ class EnhancedTraffic4CastTrainer:
             self.val_loader,
             desc=f"Val Epoch {self.current_epoch}",
             leave=False,
-            ncols=100
+            ncols=120  # Increased width
         )
+        
+        running_mse = 0.0
+        running_mse_w = 0.0
         
         with torch.no_grad():
             for batch_idx, batch_data in enumerate(pbar):
@@ -505,16 +425,31 @@ class EnhancedTraffic4CastTrainer:
                 loss = self.traffic_criterion(traffic_output, targets)
                 total_loss += loss.item()
                 
+                # Compute MSE metrics for this batch
+                batch_metrics = self.metrics_calculator.compute_all_basic_metrics(
+                    traffic_output, targets
+                )
+                
+                running_mse += batch_metrics['mse']
+                running_mse_w += batch_metrics['mse_wiedemann']
+                
                 # Store for detailed metrics
                 all_outputs.append(traffic_output.cpu())
                 all_targets.append(targets.cpu())
                 
-                # Update progress bar
-                pbar.set_postfix({'val_loss': f"{loss.item():.4f}"})
+                # Update progress bar with MSE
+                current_mse = running_mse / (batch_idx + 1)
+                current_mse_w = running_mse_w / (batch_idx + 1)
+                
+                pbar.set_postfix({
+                    'val_loss': f"{loss.item():.4f}",
+                    'mse': f"{current_mse:.4f}",
+                    'mse_w': f"{current_mse_w:.4f}"
+                })
         
         avg_loss = total_loss / len(self.val_loader)
         
-        # Compute comprehensive metrics
+        # Compute comprehensive metrics on all data
         if all_outputs:
             all_outputs = torch.cat(all_outputs, dim=0)
             all_targets = torch.cat(all_targets, dim=0)
@@ -523,10 +458,16 @@ class EnhancedTraffic4CastTrainer:
                 all_outputs, all_targets
             )
         else:
-            detailed_metrics = {}
+            detailed_metrics = {
+                'mse': avg_loss,
+                'mse_wiedemann': avg_loss
+            }
         
         metrics = {'loss': avg_loss}
         metrics.update(detailed_metrics)
+        
+        # Explicitly log MSE values
+        logging.info(f"Validation - MSE: {metrics.get('mse', 'N/A'):.6f}, MSE Wiedemann: {metrics.get('mse_wiedemann', 'N/A'):.6f}")
         
         return metrics
     
@@ -742,21 +683,18 @@ class EnhancedTraffic4CastTrainer:
         return transfer_score
     
     def fit(self) -> Dict[str, List[float]]:
-        """Main training loop with enhanced progress tracking"""
+        """Main training loop with enhanced MSE display"""
         
         logging.info("Starting enhanced training with comprehensive metrics...")
         logging.info(f"Device: {self.device}")
         logging.info(f"Model: {self.model.__class__.__name__}")
         logging.info(f"Experiment type: {self.experiment_type}")
-        logging.info(f"Training samples: {len(self.train_loader.dataset)}")
-        logging.info(f"Validation samples: {len(self.val_loader.dataset)}")
-        logging.info(f"Test samples: {len(self.test_loader.dataset)}")
         
         # Main training progress bar
         epoch_pbar = tqdm(
             range(self.config.training.epochs),
             desc="Training Progress",
-            ncols=150
+            ncols=180  # Increased width for MSE display
         )
         
         start_time = time.time()
@@ -810,14 +748,14 @@ class EnhancedTraffic4CastTrainer:
                 # Log system metrics
                 self.wandb_logger.log_system_metrics()
             
-            # Update epoch progress bar
+            # Update epoch progress bar with MSE emphasis
             epoch_time = time.time() - epoch_start_time
             
-            # Prepare postfix for progress bar
+            # Prepare postfix for progress bar with MSE focus
             postfix = {
-                'train_loss': f"{train_metrics.get('loss', 0):.4f}",
-                'val_loss': f"{val_metrics.get('loss', 0):.4f}",
-                'test_loss': f"{test_metrics.get('loss', 0):.4f}",
+                'train_mse': f"{train_metrics.get('mse', 0):.4f}",
+                'val_mse': f"{val_metrics.get('mse', 0):.4f}",
+                'val_mse_w': f"{val_metrics.get('mse_wiedemann', 0):.4f}",
                 'lr': f"{current_lr:.2e}",
                 'time': f"{epoch_time:.1f}s"
             }
@@ -825,15 +763,23 @@ class EnhancedTraffic4CastTrainer:
             if self.is_enhanced_spatiotemporal:
                 transfer_score = test_metrics.get('transfer_score', 0)
                 postfix['transfer'] = f"{transfer_score:.4f}"
+            
+            if is_best:
+                postfix['status'] = "🎯NEW_BEST"
                 
             epoch_pbar.set_postfix(postfix)
             
             # Update best metrics
             self._update_best_metrics(val_metrics, test_metrics)
             
-            # Detailed logging every few epochs
+            # Detailed logging every few epochs or if best
             if epoch % 5 == 0 or is_best:
                 self._log_detailed_metrics(epoch, train_metrics, val_metrics, test_metrics)
+            
+            # Print key metrics to console every epoch
+            logging.info(f"Epoch {epoch}: Train MSE={train_metrics.get('mse', 'N/A'):.6f}, "
+                        f"Val MSE={val_metrics.get('mse', 'N/A'):.6f}, "
+                        f"Val MSE-W={val_metrics.get('mse_wiedemann', 'N/A'):.6f}")
         
         total_time = time.time() - start_time
         logging.info(f"Training completed in {total_time:.1f}s")
@@ -925,28 +871,48 @@ class EnhancedTraffic4CastTrainer:
             logging.warning(f"Failed to log predictions to wandb: {e}")
     
     def _log_detailed_metrics(self, epoch, train_metrics, val_metrics, test_metrics):
-        """Log detailed metrics"""
+        """Enhanced detailed metrics logging with explicit MSE focus"""
         logging.info(f"\n{'='*80}")
         logging.info(f"EPOCH {epoch} DETAILED METRICS")
         logging.info(f"{'='*80}")
         
-        # Training metrics
-        logging.info("Training Metrics:")
-        for key, value in train_metrics.items():
-            if isinstance(value, (int, float)):
-                logging.info(f"  {key}: {value:.6f}")
+        # Primary metrics first (MSE focus)
+        logging.info("🎯 PRIMARY COMPETITION METRICS:")
+        for phase, metrics in [("Training", train_metrics), ("Validation", val_metrics), ("Test", test_metrics)]:
+            mse = metrics.get('mse', 'N/A')
+            mse_w = metrics.get('mse_wiedemann', 'N/A')
+            mae = metrics.get('mae', 'N/A')
+            comp_score = metrics.get('competition_score', 'N/A')
+            
+            logging.info(f"  {phase}:")
+            logging.info(f"    MSE: {mse:.6f}" if isinstance(mse, (int, float)) else f"    MSE: {mse}")
+            logging.info(f"    MSE Wiedemann: {mse_w:.6f}" if isinstance(mse_w, (int, float)) else f"    MSE Wiedemann: {mse_w}")
+            logging.info(f"    MAE: {mae:.6f}" if isinstance(mae, (int, float)) else f"    MAE: {mae}")
+            logging.info(f"    Competition Score: {comp_score:.6f}" if isinstance(comp_score, (int, float)) else f"    Competition Score: {comp_score}")
         
-        # Validation metrics
-        logging.info("Validation Metrics:")
-        for key, value in val_metrics.items():
-            if isinstance(value, (int, float)):
-                logging.info(f"  {key}: {value:.6f}")
+        # Volume metrics
+        logging.info("\n📊 VOLUME METRICS:")
+        for phase, metrics in [("Training", train_metrics), ("Validation", val_metrics), ("Test", test_metrics)]:
+            vol_mse = metrics.get('volume_mse', 'N/A')
+            vol_acc = metrics.get('volume_accuracy', 'N/A')
+            vol_f1 = metrics.get('volume_f1', 'N/A')
+            
+            logging.info(f"  {phase}:")
+            logging.info(f"    Volume MSE: {vol_mse:.6f}" if isinstance(vol_mse, (int, float)) else f"    Volume MSE: {vol_mse}")
+            logging.info(f"    Volume Accuracy: {vol_acc:.4f}" if isinstance(vol_acc, (int, float)) else f"    Volume Accuracy: {vol_acc}")
+            logging.info(f"    Volume F1: {vol_f1:.4f}" if isinstance(vol_f1, (int, float)) else f"    Volume F1: {vol_f1}")
         
-        # Test metrics
-        logging.info("Test Metrics:")
-        for key, value in test_metrics.items():
-            if isinstance(value, (int, float)):
-                logging.info(f"  {key}: {value:.6f}")
+        # Speed metrics
+        logging.info("\n🚀 SPEED METRICS:")
+        for phase, metrics in [("Training", train_metrics), ("Validation", val_metrics), ("Test", test_metrics)]:
+            speed_mse = metrics.get('speed_mse', 'N/A')
+            speed_acc = metrics.get('speed_accuracy', 'N/A')
+            speed_corr = metrics.get('speed_correlation', 'N/A')
+            
+            logging.info(f"  {phase}:")
+            logging.info(f"    Speed MSE: {speed_mse:.6f}" if isinstance(speed_mse, (int, float)) else f"    Speed MSE: {speed_mse}")
+            logging.info(f"    Speed Accuracy: {speed_acc:.4f}" if isinstance(speed_acc, (int, float)) else f"    Speed Accuracy: {speed_acc}")
+            logging.info(f"    Speed Correlation: {speed_corr:.4f}" if isinstance(speed_corr, (int, float)) else f"    Speed Correlation: {speed_corr}")
         
         logging.info(f"{'='*80}")
     
@@ -985,6 +951,118 @@ class EnhancedTraffic4CastTrainer:
             json.dump(self.metrics_tracker.to_dict(), f, indent=2)
         
         logging.info(f"Enhanced results saved to {self.save_dir}")
+    
+    def _train_epoch_enhanced(self) -> Dict[str, float]:
+        """Enhanced training epoch for spatio-temporal transfer with adaptation and multi-task loss."""
+        self.model.train()
+        total_loss = 0.0
+        accumulated_metrics = {}
+        task_losses = {'traffic': 0.0, 'city': 0.0, 'year': 0.0, 'enhanced_traffic': 0.0}
+        num_batches = 0
+
+        # Setup progress bar
+        pbar = tqdm(
+            self.train_loader,
+            desc=f"Train Epoch {self.current_epoch} [Enhanced]",
+            leave=False,
+            ncols=160
+        )
+
+        for batch_idx, batch_data in enumerate(pbar):
+            inputs, targets, metadata = self._handle_batch_data(batch_data)
+            inputs = inputs.to(self.device)
+            targets = targets.to(self.device)
+            if metadata is not None:
+                if isinstance(metadata, dict):
+                    for k in metadata:
+                        if torch.is_tensor(metadata[k]):
+                            metadata[k] = metadata[k].to(self.device)
+                elif isinstance(metadata, list):
+                    for m in metadata:
+                        for k in m:
+                            if torch.is_tensor(m[k]):
+                                m[k] = m[k].to(self.device)
+
+            self.main_optimizer.zero_grad()
+            if self.meta_optimizer:
+                self.meta_optimizer.zero_grad()
+
+            # Forward pass (multi-task)
+            outputs = self.model(inputs, metadata, mode="train")
+            traffic_output = outputs['traffic']
+            city_logits = outputs.get('city', None)
+            year_logits = outputs.get('year', None)
+            enhanced_traffic = outputs.get('enhanced_traffic', None)
+
+            # Handle output format
+            traffic_output, targets = self._handle_output_format({'traffic': traffic_output}, targets)
+            if isinstance(traffic_output, dict):
+                traffic_output = traffic_output['traffic']
+
+            # Main loss
+            loss = self.loss_weights['traffic'] * self.traffic_criterion(traffic_output, targets)
+            task_losses['traffic'] += loss.item()
+
+            # City classification loss
+            if city_logits is not None and 'city_label' in metadata:
+                city_labels, _ = self._extract_labels_from_metadata(metadata)
+                city_loss = self.loss_weights['city'] * self.city_criterion(city_logits, city_labels)
+                loss = loss + city_loss
+                task_losses['city'] += city_loss.item()
+
+            # Year classification loss
+            if year_logits is not None and 'year_label' in metadata:
+                _, year_labels = self._extract_labels_from_metadata(metadata)
+                year_loss = self.loss_weights['year'] * self.year_criterion(year_logits, year_labels)
+                loss = loss + year_loss
+                task_losses['year'] += year_loss.item()
+
+            # Enhanced traffic loss (optional)
+            if enhanced_traffic is not None:
+                enhanced_loss = self.loss_weights['enhanced_traffic'] * self.traffic_criterion(enhanced_traffic, targets)
+                loss = loss + enhanced_loss
+                task_losses['enhanced_traffic'] += enhanced_loss.item()
+
+            # Backward pass
+            loss.backward()
+            self.main_optimizer.step()
+            if self.meta_optimizer:
+                self.meta_optimizer.step()
+
+            total_loss += loss.item()
+            num_batches += 1
+
+            # Compute detailed metrics every few batches
+            if batch_idx % 5 == 0:
+                with torch.no_grad():
+                    batch_metrics = self.metrics_calculator.compute_competition_metrics(
+                        traffic_output.detach(), targets.detach()
+                    )
+                    for key, value in batch_metrics.items():
+                        if key not in accumulated_metrics:
+                            accumulated_metrics[key] = []
+                        accumulated_metrics[key].append(value)
+
+            # Update progress bar
+            current_avg_loss = total_loss / num_batches
+            latest_mse = accumulated_metrics.get('mse', [current_avg_loss])[-1] if accumulated_metrics.get('mse') else current_avg_loss
+            latest_mse_w = accumulated_metrics.get('mse_wiedemann', [current_avg_loss])[-1] if accumulated_metrics.get('mse_wiedemann') else current_avg_loss
+            pbar.set_postfix({
+                'loss': f"{loss.item():.4f}",
+                'avg_loss': f"{current_avg_loss:.4f}",
+                'mse': f"{latest_mse:.4f}",
+                'mse_w': f"{latest_mse_w:.4f}"
+            })
+
+        # Calculate average metrics
+        avg_metrics = {}
+        for key, values in accumulated_metrics.items():
+            avg_metrics[key] = np.mean(values)
+        avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
+        avg_metrics['loss'] = avg_loss
+        for task in task_losses:
+            avg_metrics[task] = task_losses[task] / num_batches if num_batches > 0 else 0.0
+        return avg_metrics
 
 
 # Factory function
