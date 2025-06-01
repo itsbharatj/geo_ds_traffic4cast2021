@@ -223,9 +223,6 @@ traffic4cast-enhanced/
 └── tests/                   # Test suite
 ```
 
-
-```
-
 ## Acknowledgments
 
 - [Traffic4Cast Competition](https://www.iarai.ac.at/traffic4cast/) for providing the dataset and challenge!
