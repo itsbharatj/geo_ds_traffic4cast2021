@@ -1,0 +1,70 @@
+# config/spatiotemporal_config.yaml
+# Spatio-Temporal Transfer Learning Configuration
+
+base_config: "config/base.yaml"
+
+data:
+  # root_dir: "./data/raw"
+  root_dir: "/Users/ananyashukla/Desktop/Ananya_Shukla/Semester_6/GeoDS/NeurIPS2021-traffic4cast/src/data/DATASET/"
+  cities: ["BARCELONA", "ANTWERP", "BANGKOK"]
+  input_timesteps: 12
+  output_timesteps: 6
+  channels: 8
+  height: 495
+  width: 436
+  limit_per_split: null  # Set to small number for debugging
+
+model:
+  name: "multitask_unet"
+  in_channels: 96  # input_timesteps * channels
+  out_channels: 48  # output_timesteps * channels  
+  features: [64, 128, 256, 512]
+  bilinear: false
+  use_attention: true      # Enable spatial and temporal attention
+  use_meta_learning: true  # Enable few-shot adaptation
+
+training:
+  batch_size: 4           # Smaller batch size for complex model
+  epochs: 100
+  learning_rate: 0.0001   # Lower learning rate for stable training
+  weight_decay: 0.00001
+  device: "auto"
+  num_workers: 4
+  pin_memory: true
+  
+  # Multi-task loss weights
+  traffic_weight: 1.0           # Main task
+  city_weight: 0.1             # Auxiliary task for spatial patterns
+  year_weight: 0.1             # Auxiliary task for temporal patterns  
+  enhanced_traffic_weight: 0.5  # Attention-enhanced prediction
+
+experiment:
+  type: "enhanced_spatiotemporal_transfer"
+  
+  # Training: Multiple cities with both pre-COVID and COVID data
+  train_cities: ["ANTWERP", "BANGKOK"]  
+  train_years: ["2019", "2020"]  # Both pre-COVID and COVID patterns
+  
+  # Testing: Unseen city with temporal transfer
+  test_city: "BARCELONA"         # Target city (not in training)
+  test_train_year: "2019"        # Available data for adaptation
+  test_target_year: "2020"       # Target year to predict
+  
+  # Few-shot adaptation parameters
+  adaptation_samples: 100        # Samples from test city for adaptation
+  
+  # Dataset statistics
+  num_cities: 3                  # Number of training cities
+  num_years: 2                   # Number of training years
+  
+  # Experiment settings
+  val_fraction: 0.1
+  random_seed: 42
+  comprehensive_analysis: false   # Set to true for full analysis
+
+logging:
+  experiment_name: "enhanced_spatiotemporal_transfer"
+  save_dir: "./experiments"
+  log_interval: 25
+  save_checkpoints: true
+  use_tensorboard: true

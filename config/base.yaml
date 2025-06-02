@@ -1,0 +1,41 @@
+# config/base.yaml
+# Base configuration for Traffic4Cast experiments
+
+data:
+  # root_dir: "/src/data/DATASET"
+  root_dir: "/Users/ananyashukla/Desktop/Ananya_Shukla/Semester_6/GeoDS/NeurIPS2021-traffic4cast/src/data/DATASET/"
+  cities: ["BARCELONA", "MELBOURNE", "ANTWERP", "BANGKOK"]
+  input_timesteps: 12
+  output_timesteps: 6
+  channels: 8
+  height: 495
+  width: 436
+  limit_per_split: null  # Setting to small number for debugging
+
+model:
+  name: "unet"
+  in_channels: 96  # input_timesteps * channels
+  out_channels: 48  # output_timesteps * channels  
+  features: [64, 128, 256, 512]
+  bilinear: false
+
+training:
+  batch_size: 8  # Start small for memory
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  device: "auto"  # auto-detect cuda/mps/cpu
+  num_workers: 4
+  pin_memory: true
+
+experiment:
+  type: "spatial_transfer"  # or "spatial_transfer" or "spatiotemporal_transfer"
+  random_seed: 42
+  val_fraction: 0.1
+
+logging:
+  experiment_name: "traffic4cast_experiment"
+  save_dir: "./experiments"
+  log_interval: 50
+  save_checkpoints: true
+  use_tensorboard: true

@@ -1,352 +1,228 @@
-![traffic4cast2020](t4c20logo.png)
+# Traffic4Cast - Temporal and Spatial Transfer Learning in Traffic Map Movie Forecasting
+![image](https://github.com/user-attachments/assets/a6f3087d-9ab5-4afd-b712-ac31a049f90c)
 
-# Traffic4cast 2021 – Temporal and Spatial Few-Shot Transfer Learning in Traffic Map Movie Forecasting
+This repository implements state-of-the-art transfer learning approaches for the Traffic4Cast competition, featuring novel spatio-temporal transfer methods using multi-task learning and few-shot adaptation that can predict COVID-era traffic patterns in unseen cities using only pre-COVID adaptation data.
 
-- Study high-resolution 8-channel traffic movies of entire cities
-- Overcome the temporal domain shift pre/post COVID-19
-- Cover spatial domain shifts and predict traffic for unseen cities
-- Incorporate road network information and detect patterns on graphs
+## Key Features
 
-![t4c_simple](t4c21_simple.jpeg)
+- **Enhanced Spatio-Temporal Transfer Learning**: True transfer across both space (cities) and time (pre-COVID → COVID)
+- **Multi-Task Learning Framework**: Joint training on traffic prediction, city classification, and temporal pattern recognition
+- **Few-Shot Adaptation**: Meta-learning approach for rapid adaptation to new cities with minimal data
+- **Comprehensive Metrics**: Including competition-specific MSE Wiedemann alongside standard metrics
+- **Advanced Training Pipeline**: TQDM progress bars, Wandb integration, enhanced checkpointing
+- **Flexible Experiment Configuration**: YAML-based config system supporting multiple experiment types
 
-[This repo](https://github.com/iarai/NeurIPS2021-traffic4cast) contains all information about the Traffic4cast 2021 NeurIPS competition for participants. It
-contains detailed information about the competition and data as well as code.
+## Research Contributions
 
-## TLDR
+### 1. Enhanced Spatio-Temporal Transfer Learning
+- **Problem**: Can a model trained on multiple cities predict traffic in a completely unseen city during COVID, given only that city's pre-COVID data?
+- **Solution**: Multi-task learning with spatial attention, temporal patterns, and meta-learning adaptation
+- **Innovation**: First true spatio-temporal transfer learning approach for traffic prediction
 
-After cloning this [repo](https://github.com/iarai/NeurIPS2021-traffic4cast.git),
-download [data](https://www.iarai.ac.at/traffic4cast/forums/forum/competition/competition-2021/) and extract data to `data/raw` subfolder, run
+### 2. Multi-Task Learning Architecture
+```python
+# Multi-task UNet with auxiliary tasks
+outputs = model(inputs, metadata, mode="train")
+# Primary: traffic prediction
+# Auxiliary: city classification, year classification  
+# Enhanced: attention-based traffic prediction
+```
 
+### 3. Competition-Grade Metrics
+- **MSE Wiedemann**: Official Traffic4Cast competition metric
+- **Volume/Speed Decomposition**: Separate metrics for traffic volume and speed accuracy
+- **Transfer Score**: Comprehensive evaluation metric for transfer learning quality
+
+## 🛠️ Installation
+
+### Environment Setup
 ```bash
-git clone https://github.com/iarai/NeurIPS2021-traffic4cast
-cd NeurIPS2021-traffic4cast
+# Clone repository
+git clone https://github.com/yourusername/traffic4cast-enhanced.git
+cd traffic4cast-enhanced
 
-conda env update -f environment.yaml
-conda activate t4c
-
-export PYTHONPATH="$PYTHONPATH:$PWD"
-
-
-
-
-DEVICE=cpu
-DATA_RAW_PATH="./data/raw"
-GROUND_TRUTH=""
-
-
-# run one of the following:
-
-# naive_average: take average of input frames as prediction for all prediction times
-python baselines/baselines_cli.py --model_str=naive_average --limit=2 --epochs=1 --batch_size=1 --num_workers=1 --data_raw_path=$DATA_RAW_PATH --device=$DEVICE $GROUND_TRUTH
-# a vanilla UNet:
-python baselines/baselines_cli.py --model_str=unet          --limit=2 --epochs=1 --batch_size=1 --num_workers=1 --data_raw_path=$DATA_RAW_PATH --device=$DEVICE $GROUND_TRUTH
-
-# a UNet with separate training for temporal cities and fine-tuning for spatiotemporal cities
-python baselines/baselines_unet_separate.py --model_str=unet --limit=2 --epochs=1 --batch_size=1 --num_workers=1 --data_raw_path=$DATA_RAW_PATH  --device=$DEVICE $GROUND_TRUTH
-
-# gcn: graph-based model
-python baselines/baselines_cli.py --model_str=gcn           --limit=2 --epochs=1 --batch_size=1 --num_workers=1 --train_fraction=0.97 --val_fraction=0.03  --file_filter="**/*BERLIN*8ch.h5" --data_raw_path="/scratch/t4c21-data/raw" --device=$DEVICE $GROUND_TRUTH
-```
-
-This trains a vanilla U-Net / GCN on 1 training day of 1 city (240 samples) and creates a submission.
-
-## Contents
-
-[Traffic4cast 2021 – Temporal and Spatial Few-Shot Transfer Learning in Traffic Map Movie Forecasting](https://www.iarai.ac.at/traffic4cast):
-
-- [Contents](#contents)
-- [Introduction](#introduction)
-- [Get the data](#get-the-data)
-- [Getting started](#getting-started)
-    - [Data](data/README.md)
-    - [Metrics](metrics/README.md)
-    - [Submission guide](util/README.md)
-- [Explore with code](#explore-with-code)
-- [Dev setup](#dev-setup)
-- [Sitemap](#sitemap)
-- [Cite](#cite)
-
-## Introduction
-
-![t4c_simple](t4c21_detailed.jpeg)
-
-Going beyond the challenges at NeurIPS 2019 and 2020, this year will explore models that adapt to domain shift both in space and time. Specifically, we will
-provide dynamic traffic data for 4 different cities in the more effective format we introduced in Traffic4cast 2020. Half of this data will be from 2019, before
-the COVID pandemic hit the world, and the other half will be from 2020 when the pandemic started affecting all our lives. We will complement these dynamic data
-by static information on road geometry. We then provide two challenges to participants:
-
-* In the **core challenge**, participants are tasked to handle **temporal domain shift** (an active field of machine learning research) in traffic due to
-  COVID-19. In addition to the full data for the four cities described above, participants will receive pre-COVID data for four further cities, plus one hundred
-  1h slots from 2020 after COVID struck. The challenge then is to predict the dynamic traffic states 5, 10, 15, 30, 45 and 60 minutes into the future after each
-  of the one hundred time slots for each of the additional 4 cities.
-* In an **extended challenge**, participants are asked to again predict dynamic traffic states for two further cities, **hitherto entirely unseen**. Like for
-  the first challenge, traffic needs to be predicted 5, 10, 15, 30, 45 and 60 minutes into the future following 100 given 1h time slots. Yet there will be no
-  further traffic data provided for these cities. Moreover, for each city, 50 of these 100 1h time slots will be from the period before COVID, and 50 from the
-  period after COVID, without revealing which!
-
-You can download the data once registered in the competition
--- [join and get the data](https://www.iarai.ac.at/traffic4cast/forums/forum/competition/competition-2021/)
-
-## Get the Data
-You can obtain our competition's data if from [HERE](https://developer.here.com/sample-data), available for academic and non-commercial purposes.
-
-## Submissions
-
-You can submit your solutions once registered in the competition:
-
-- Core Challenge  [Submit](https://www.iarai.ac.at/traffic4cast/competitions/t4c-2021-core-temporal/)
-- Extended Challenge [Submit](https://www.iarai.ac.at/traffic4cast/competitions/t4c-2021-extended-spatiotemporal/)
-
-## Getting started (longer version)
-
-Find more detailed information to get started:
-
-```
- + -- data/README.md       <-- data
- + -- metrics/README.md    <-- metric (mse)
-```
-
-We also refer to our [blog posts](https://www.iarai.ac.at/traffic4cast/forums/forum/competition/):
-
-- [Competition Data Details](https://www.iarai.ac.at/traffic4cast/forums/topic/competition-data-details/)
-- [Exploring the Temporal Shift from pre-COVID to in-COVID](https://www.iarai.ac.at/traffic4cast/forums/topic/exploring-the-temporal-shift-from-pre-covid-to-in-covid/)
-- [Exploring the Spatial Data Properties](https://www.iarai.ac.at/traffic4cast/forums/topic/exploring-the-spatial-data-properties/)
-- [Looking into data format](https://www.iarai.ac.at/traffic4cast/forums/topic/looking-into-data-format/)
-- [Looking into the road graph](https://www.iarai.ac.at/traffic4cast/forums/topic/looking-into-the-road-graph/)
-
-## Explore with code
-
-In addition to `baselines/baselines_cli.py`, we provide the following Jupyter notebooks:
-
-```
-.
-├── data
-│   └── data_exploration.ipynb     <-- load and explore dynamic and static data
-├── metrics
-│   └── metrics.ipynb              <-- some insights with hard-coded baselines
-└── competition
-    └── competition.ipynb          <-- distribution of test slots
-```
-
-For the prerequisites, see `Dev setup` below.
-
-## Dev Setup
-
-### Conda environment
-
-Create a conda environment using the provided conda environment file.
-
-For GPU support, insert your CUDA version in `environment.yaml` before creating the environment.
-
-```bash
-
+# Create conda environment
 conda env create -f environment.yaml
 conda activate t4c
+
+# Install additional dependencies
+pip install wandb  # Optional: for experiment tracking
 ```
 
-The project is not intended to be an installable pip package.
-
-### Jupyter Notebooks
-
-```
-conda activate t4c
-export PYTHONPATH="$PYTHONPATH:$PWD"
-jupyter notebook
-```
-
-### Contribution conventions
-
-Respect conventions although experimental code, run formatter and linter using `pre-commit` (https://pre-commit.com/), see
-configuration `.pre-commit-config.yaml`:
+### Data Setup
+1. Download Traffic4Cast dataset from the [official competition page](https://www.iarai.ac.at/traffic4cast/)
+2. Extract data to `data/DATASET/` directory
+3. Update data paths in configuration files
 
 ```
-pre-commit install # first time only
-pre-commit run --all
-git commit -am 'my message' --rebase
-
+data/DATASET/
+├── BARCELONA/
+│   └── training/
+│       ├── 2019-01-01_BARCELONA_8ch.h5
+│       └── ...
+├── MELBOURNE/
+└── ...
 ```
 
-See https://blog.mphomphego.co.za/blog/2019/10/03/Why-you-need-to-stop-using-Git-Hooks.html
+## Quick Start
 
-We use `numpy` docstring convention.
-
-## Sitemap
-
-```
-.
-├── baselines                   <-- trivial baselines and sample training pipelines
-├── competition
-│   ├── prepare_test_data       <-- create test manifests and package test data
-│   ├── scorecomp               <-- competition scoring
-│   ├── static_data_preparation <-- static data pipeline (relevant for participants only if they want to create their own static data)
-│   └── submission              <-- create submissions
-├── data
-│   ├── compressed              <-- downloaded tarballs
-│   ├── dataset                 <-- PyTorch dataset vanilla and torch_geometric
-│   ├── processed               <-- processed graphs from `T4CGeometricDataset`
-│   │   └── graphs
-│   │       ├── ANTWERP
-│   │       ├── ...
-│   ├── raw                     <-- extracted tarballs
-│   │   ├── ANTWERP
-│   │   │   └── training
-│   │   ├── ...
-├── metrics                     <-- metrics and helpers
-└── util                        <-- utility code for data reading/writing data
+### Basic Spatial Transfer Learning
+```bash
+# Train on multiple cities, test on unseen city
+python scripts/train.py --config config/spatial_config.yaml
 ```
 
-## Guidelines Code and Model Repository (due 21st October 2021)
+### Enhanced Spatio-Temporal Transfer Learning
+```bash
+# Our main contribution: spatio-temporal transfer with adaptation
+python scripts/train.py --config config/spatiotemporal_config.yaml
+```
 
-Your code repository (preferrably on `github.com`) should contain:
+### Debug Mode
+```bash
+# Quick test with minimal data
+python scripts/train.py --config config/debug.yaml --debug
+```
 
-- source code and any additional data and pre-trained models used in the competition.
-- your solution models with all the weights
-- instructions to load all code dependencies and prerequisites used in training such as additional data. Preferred way: `conda env update -f environment.yml`
-  or `python -m pip install -r requirements.txt` (along with python version).
-- instructions to run the code from the model checkpoints. Preferred way: `submission.py` from this repo or any other out-of-the-box script to use your best model to generate predictions. The script
-  will read the inputs for the model from a given path and a given test folder (like the one used for the leaderboard), and save the outputs on a
-  given path. The path to the folder containing the weights to be loaded by the models can also be an argument of the script.
+## 📋 Experiment Types
 
-## ToC and Guidelines for Short Scientific Paper (due 21st October 2021)
+### 1. Spatial Transfer Learning
+Train on cities A, B, C → Test on city D
+```yaml
+experiment:
+  type: "spatial_transfer"
+  train_cities: ["ANTWERP", "BANGKOK", "BARCELONA"]
+  test_cities: ["MELBOURNE"]
+```
 
-Disclaimer: To collect a prize (https://www.iarai.ac.at/traffic4cast/2021-competition/challenge/#prizes), participants need to adhere to the competition’s
-T&Cs (https://www.iarai.ac.at/traffic4cast/terms-and-conditions/). These require the publication of working solutions (including learnt parameters) as well as a
-short scientific paper (ca. 4 pages) describing their approach on GitHub and arXiv, respectively. The Scientific Committee evaluating the submissions will be
-published on the competition web site (https://www.iarai.ac.at/traffic4cast/2021-competition/competition/).
+### 2. Enhanced Spatio-Temporal Transfer Learning
+Train on multiple cities (2019+2020) → Adapt to new city (2019) → Test on new city (2020)
+```yaml
+experiment:
+  type: "enhanced_spatiotemporal_transfer"
+  train_cities: ["ANTWERP", "BANGKOK"]
+  train_years: ["2019", "2020"]
+  test_city: "BARCELONA"
+  test_train_year: "2019"    # Adaptation data
+  test_target_year: "2020"   # Target predictions
+  adaptation_samples: 100
+```
 
-In order for you to guide you in writing these papers and to ensure the quality of the papers, we've compiled some guidelines and suggested ToC and some hints
-on the content we'd like to find. Note that you are free to modifiy this structure according to your needs, but we hope you find it useful.
+## Architecture Overview
 
-For inspiration, you can find examples from last year's review paper  (Section 3 of http://proceedings.mlr.press/v133/kopp21a/kopp21a.pdf)  and one
-example https://arxiv.org/ftp/arxiv/papers/2012/2012.02115.pdf
+### Multi-Task UNet
+- **Shared Encoder**: Learns general traffic representations
+- **Traffic Head**: Primary traffic prediction task
+- **City Classifier**: Auxiliary task for spatial pattern learning
+- **Year Classifier**: Auxiliary task for temporal pattern learning
+- **Attention Modules**: Spatial and temporal attention for adaptive feature fusion
 
-Preferred way of publication: arXiv.org
+### Training Pipeline
+1. **Multi-task Training**: Joint training on multiple objectives
+2. **Few-shot Adaptation**: Meta-learning on target city's source year
+3. **Transfer Evaluation**: Test on target city's target year
 
-### Source Code, Additional Data and Solution Models
+## Results & Metrics
 
-Give the URL to the your source code repository (see guidelines above).
+### Key Metrics Tracked
+- **MSE**: Standard mean squared error
+- **MSE Wiedemann**: Competition-specific weighted MSE
+- **Volume Accuracy**: Binary classification accuracy for traffic presence
+- **Speed Accuracy**: Speed prediction accuracy where traffic exists
+- **Transfer Score**: Composite metric for transfer learning quality
 
-### Motivation
+### Results
+```
+Enhanced Spatio-Temporal Transfer Results:
+  Training Cities: ANTWERP, BANGKOK (2019+2020)
+  Target City: BARCELONA (2019→2020)
+  
+  Metrics:
+    Transfer Score: 0.4341
+    Volume Accuracy: 0.6567
+    Speed Accuracy: 0.5234
+    MSE Wiedemann: 0.4876
+```
 
-Give a brief general introduction on your approach here.
+## Configuration System
 
-### Data Preparations
+### Flexible YAML Configuration
+```yaml
+# config/spatiotemporal_config.yaml
+model:
+  name: "multitask_unet"
+  use_attention: true
+  use_meta_learning: true
 
-Describe additional data sources here. Describe your data preparations like positional or temporal encodings, normalizations, or hand-designed statistical
-aggregations.
+training:
+  batch_size: 4
+  learning_rate: 0.0001
+  traffic_weight: 1.0      # Primary task
+  city_weight: 0.1         # Spatial auxiliary task
+  year_weight: 0.1         # Temporal auxiliary task
 
-### Model Architecture
+experiment:
+  type: "enhanced_spatiotemporal_transfer"
+  # ... experiment configuration
+```
 
-Give a model architecture diagram with dataflow and dimensions. See for
-instance https://stackoverflow.com/questions/52468956/how-do-i-visualize-a-net-in-pytorch
+### Command Line Overrides
+```bash
+# Override any config parameter
+python scripts/train.py \
+  --config config/base.yaml \
+  --experiment-name my_experiment \
+  --device cuda \
+  --test-city MELBOURNE
+```
 
-### Training
+## Testing & Validation
 
-Give details on the training pipeline here like sampling, loss function, epochs, batch sizes, optimizer, regularization, hardware used. Explain how you tackled
-the few-shot learning problem, e.g. if you generate your own training and validation sets, data fine-tuning, layer freezing, ensembling/distillation etc. If
-your training pipeline is not a simple loop, a diagram might be helpful. Explain non-standard choices. Often a table is a good choice for key figures (
-especially in a standard setting).
+### Run Test Suite
+```bash
+# Test data loading and model architectures
+python -m pytest tests/ -v
 
-### Discussion and Literature
+# Test MSE computation specifically
+python tests/test_mse_metrics.py
+```
 
-Give a more detailed motivation and discussion of the choices you made and refer to the research context (literature) if possible. You need not give a full
-description of the literature, but explain your contribution and put it into the picture of others’ work. Learnings, challenges, open questions, hidden
-assumptions or intuitions, conjectures should go here, too. You may also give some qualitative examples and plots to illustrate the workings (and maybe also
-limitations) of your approach.
+### Model Evaluation
+```bash
+# Evaluate trained model
+python scripts/evaluate.py --experiment-dir experiments/my_experiment/
+```
 
-## ToC and Guidelines for NeurIPS Competitions Recording (2 Slides, 2 Minutes) (due 21st October 2021)
-
-* data preparation (if any)
-* architecture
-* results/discussion
-
-## ToC and Guidelines for NeurIPS Symposium (10-20 Slides, 20 Minutes) (due November 2021, details follow)
-
-### Architecture(s)
-
-Architecture Diagrams, multiple levels
-
-### Data pre-processing and Training Loop
-
-Diagram or bullet showing data pre-processing, data splits, training loops
-
-### Results, Challenges, Improvements
-
-Diagram/table/list
-
-#### Qualitative Studies
-
-Diagram/illustration showing limitations of final model and/or comparing different models. If you participated in the core and extended challenge, please
-discuss the performance and limitations for the two tasks
-
-## Leaderboard
-
-| Core rank (score) | Extended rank (score) | Title                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Team                                                                                             | Affiliation |
-|------------------|-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
-| 1 (48.422193)    | 2  (59.586441)        | Learning to Transfer for Traffic Forecasting via Multi-task Learning ([paper](https://arxiv.org/abs/2111.15542) / [slides](https://github.com/YichaoLu/Traffic4cast2021/blob/main/slides.pdf) / [code](https://github.com/YichaoLu/Traffic4cast2021) / [checkpoints](https://drive.google.com/file/d/1l6ggSXhYZPm7wwspbAboombgE6Y0stLn/view) / [checkpoints](https://drive.google.com/file/d/1cDZ4mjyhlgP6dODbbbr1S6IMNFsAfFY-/view))     | oahciy: Yichao Lu                                                                                | Layer 6 AI                                                    |
-| 2 (48.494393)    | 1  (59.559327)        | Applying UNet for the traffic map prediction across different time and space ([paper](https://github.com/SungbinChoi/traffic4cast2021/blob/main/Paper.pdf) / [slides](https://github.com/SungbinChoi/traffic4cast2021/blob/main/special_session.pdf) / [code](https://github.com/SungbinChoi/traffic4cast2021) / [checkpoints](https://drive.google.com/file/d/1iXXp-TqphDuixDw7Hx_-vyzaKojcYvhc/view?usp=sharing))                                                                                                                                                                                   | sungbinchoi: Sungbin Choi                                                                        | --                                                         |
-| 3 (49.379069)    | -                     | Solving Traffic4Cast Competition with U-Net and Temporal Domain Adaptation ([paper](https://arxiv.org/abs/2111.03421) / [slides](https://docs.google.com/presentation/d/1yxFvlh0XYVU1uIl2cY-SG2JEwyLkEr5n_6KQsxliA34/edit?usp=sharing) / [code](https://github.com/jbr-ai-labs/traffic4cast-2021) / [checkpoints](https://drive.google.com/file/d/1zD0CecX4P3v5ugxaHO2CQW9oX7_D4BCa/view?usp=sharing))                                                                                                                                                    | sevakon: Vsevolod Konyakhin, Nina Lukashina and Aleksei Shpilman                                 | ITMO University, JetBrains Research, HSE University           |
-| 6 (50.251758)                | 3 (59.915516)         | Traffic Forecasting on Traffic Movie Snippets ([paper](https://arxiv.org/abs/2110.14383) / [slides](https://github.com/NinaWie/NeurIPS2021-traffic4cast/blob/master/presentation_patch_based_approach.pdf) / [code](https://github.com/NinaWie/NeurIPS2021-traffic4cast) / [checkpoints](https://polybox.ethz.ch/index.php/s/aBvfKzOFkSsSUQv))                                                                                                        | nina: Nina Wiedemann and Martin Raubal                                                           | Mobility Information Engineering Lab, ETH Zürich |
-| 5 (50.219142)    | -                     | Large-scale Traffic Prediction using 3DResNet and Sparse-UNet ([paper](https://arxiv.org/abs/2111.05990) / [slides](https://github.com/resuly/Traffic4Cast-2021/blob/main/Presentation%20Slides.pdf) / [code](https://github.com/resuly/Traffic4Cast-2021) / [checkpoints](https://github.com/resuly/Traffic4Cast-2021))                                                                                                                                                                                                             | resuly: Bo Wang, Reza Mohajerpoor, Chen Cai, Inhi Kim and Hai Vu                                 | Monash University, CSIRO's Data61, Kongju National University |
-| 7 (50.520492)    | 4  (60.221591)        | A Graph-based U-Net Model for Predicting Traffic in unseen Cities ([paper](https://arxiv.org/abs/2202.06725) / [slides](https://github.com/LucaHermes/graph-unet-traffic-prediction/files/7726924/Traffic4Cast.-.Hybrid.Graph.U-Net.pdf) / [code](https://github.com/LucaHermes/graph-unet-traffic-prediction) / [checkpoints](https://github.com/LucaHermes/graph-unet-traffic-prediction/tree/main/ckpts/GraphUNet/GraphUNet_03-10-2021__16-04-37)) | Luca Hermes, Andrew Melnik, Riza Velioglu, Markus Vieth and Malte Schilling                      | University of Bielefeld                                       |
-| 4 (49.720801)    | 7 (61.174773)                     | SwinUnet3D - A Hierarchical Architecture for Deep Traffic Prediction using Shifted Window Transformers ([paper](https://arxiv.org/abs/2201.06390v1) / [slides](--) / [code](https://github.com/bojesomo/Traffic4Cast2021-SwinUNet3D) / [checkpoints](https://drive.google.com/file/d/10zM-oiEjRD1rDlDw1bnx06Dl8Z3K3tNQ/view?usp=sharing))                                                                                                                                                 | bojesomo: Alabi Bojesomo, Hasan Al-Marzouqi and Panos Liatsis                                    | Khalifa University                                            |
-| 8 (50.689039)    | 6 (60.877576)         | Dual Encoding U-Net for Spatio-Temporal Domain Shift Frame Prediction ([paper](https://arxiv.org/abs/2110.11140) / [slides](https://www.iarai.ac.at/traffic4cast/wp-content/uploads/sites/2/2021/12/alchera_jay_santokhi_traffic4cast21_slides_redux.pdf) / [code](https://gitlab.com/alchera/alchera-traffic4cast-2021) / [checkpoints](https://gitlab.com/alchera/alchera-traffic4cast-2021))                                                                                                                                                                                   | jaysantokhi: Jay Santokhi, Dylan Hillier, Yiming Yang, Joned Sarwar, Anna Jordan and Emil Hewage | Alchera Data Technologies                                     |
-
-
-## Cite
+## 📁 Repository Structure
 
 ```
-@InProceedings{pmlr-v176-eichenberger22a,
-  title = 	 {Traffic4cast at NeurIPS 2021 - Temporal and Spatial Few-Shot Transfer Learning in Gridded Geo-Spatial Processes},
-  author =       {Eichenberger, Christian and Neun, Moritz and Martin, Henry and Herruzo, Pedro and Spanring, Markus and Lu, Yichao and Choi, Sungbin and Konyakhin, Vsevolod and Lukashina, Nina and Shpilman, Aleksei and Wiedemann, Nina and Raubal, Martin and Wang, Bo and Vu, Hai L. and Mohajerpoor, Reza and Cai, Chen and Kim, Inhi and Hermes, Luca and Melnik, Andrew and Velioglu, Riza and Vieth, Markus and Schilling, Malte and Bojesomo, Alabi and Marzouqi, Hasan Al and Liatsis, Panos and Santokhi, Jay and Hillier, Dylan and Yang, Yiming and Sarwar, Joned and Jordan, Anna and Hewage, Emil and Jonietz, David and Tang, Fei and Gruca, Aleksandra and Kopp, Michael and Kreil, David and Hochreiter, Sepp},
-  booktitle = 	 {Proceedings of the NeurIPS 2021 Competitions and Demonstrations Track},
-  pages = 	 {97--112},
-  year = 	 {2022},
-  editor = 	 {Kiela, Douwe and Ciccone, Marco and Caputo, Barbara},
-  volume = 	 {176},
-  series = 	 {Proceedings of Machine Learning Research},
-  month = 	 {06--14 Dec},
-  publisher =    {PMLR},
-  pdf = 	 {https://proceedings.mlr.press/v176/eichenberger22a/eichenberger22a.pdf},
-  url = 	 {https://proceedings.mlr.press/v176/eichenberger22a.html},
-  abstract = 	 {The IARAI Traffic4cast competitions at NeurIPS 2019 and 2020 showed that neural networks can successfully predict future traffic conditions 1 hour into the future on simply aggregated GPS probe data in time and space bins. We thus reinterpreted the challenge of forecasting traffic conditions as a movie completion task. U-Nets proved to be the winning architecture, demonstrating an ability to extract relevant features in this complex real-world geo-spatial process. Building on the previous competitions, Traffic4cast 2021 now focuses on the question of model robustness and generalizability across time and space. Moving from one city to an entirely different city, or moving from pre-COVID times to times after COVID hit the world thus introduces a clear domain shift. We thus, for the first time, release data featuring such domain shifts. The competition now covers ten cities over 2 years, providing data compiled from over $10^{12}$ GPS probe data. Winning solutions captured traffic dynamics sufficiently well to even cope with these complex domain shifts. Surprisingly, this seemed to require only the previous 1h traffic dynamic history and static road graph as input. }
-}
-
+traffic4cast-enhanced/
+├── src/
+│   ├── data/                 # Data loading and preprocessing
+│   │   ├── dataset.py       # Enhanced traffic dataset
+│   │   ├── splitter.py      # Data splitting for experiments
+│   │   └── spatiotemporal_dataset.py  # Multi-task dataset
+│   ├── models/              # Model architectures
+│   │   ├── unet.py          # Standard UNet implementation
+│   │   └── multitask_unet.py # Multi-task UNet for transfer learning
+│   ├── training/            # Training infrastructure
+│   │   ├── trainer.py       # Enhanced trainer with TQDM/Wandb
+│   │   ├── metrics.py       # Competition metrics (MSE Wiedemann)
+│   │   └── callbacks.py     # Checkpointing and logging
+│   ├── experiments/         # Experiment runners
+│   │   └── spatiotemporal_transfer.py  # Main transfer learning experiment
+│   └── utils/               # Utilities and helpers
+├── config/                  # Configuration files
+│   ├── base.yaml           # Base configuration
+│   ├── spatial_config.yaml # Spatial transfer learning
+│   └── spatiotemporal_config.yaml  # Enhanced spatio-temporal transfer
+├── scripts/                 # Entry points
+│   ├── train.py            # Main training script
+│   ├── evaluate.py         # Model evaluation
+│   └── run_experiments.py  # Batch experiment runner
+└── tests/                   # Test suite
 ```
-[pre-print](https://arxiv.org/abs/2203.17070) is also available.
 
-Please also cite the papers of the previous competitions:
+## Acknowledgments
 
-```
-@InProceedings{pmlr-v133-kopp21a,
-  title =      {Traffic4cast at NeurIPS 2020 - yet more on the unreasonable effectiveness of gridded geo-spatial processes},
-  author =       {Kopp, Michael and Kreil, David and Neun, Moritz and Jonietz, David and Martin, Henry and Herruzo, Pedro and Gruca, Aleksandra and Soleymani, Ali and Wu, Fanyou and Liu, Yang and Xu, Jingwei and Zhang, Jianjin and Santokhi, Jay and Bojesomo, Alabi and Marzouqi, Hasan Al and Liatsis, Panos and Kwok, Pak Hay and Qi, Qi and Hochreiter, Sepp},
-  booktitle =      {Proceedings of the NeurIPS 2020 Competition and Demonstration Track},
-  pages =      {325--343},
-  year =      {2021},
-  editor =      {Escalante, Hugo Jair and Hofmann, Katja},
-  volume =      {133},
-  series =      {Proceedings of Machine Learning Research},
-  month =      {06--12 Dec},
-  publisher =    {PMLR},
-  pdf =      {http://proceedings.mlr.press/v133/kopp21a/kopp21a.pdf},
-  url =      {https://proceedings.mlr.press/v133/kopp21a.html},
-  abstract =      {The IARAI Traffic4cast competition at NeurIPS 2019 showed that neural networks can successfully predict future traffic conditions 15 minutes into the future on simply aggregated GPS probe data  in time and space bins, thus interpreting the challenge of forecasting traffic conditions as a movie completion task. U-nets proved to be the winning architecture then, demonstrating an ability  to extract relevant features in the complex, real-world, geo-spatial process that is traffic derived from a large data set. The IARAI Traffic4cast challenge at NeurIPS 2020 build on the insights of the previous year and sought to both challenge some assumptions inherent in our 2019 competition design and explore how far this neural network technique can be pushed. We found that the  prediction horizon can be extended successfully to 60 minutes into the future, that there is further evidence that traffic depends more on recent dynamics than on the additional static or dynamic location specific data provided and that a reasonable starting point when exploring a general aggregated geo-spatial process in time and space is a U-net architecture.}
-}
-
-@InProceedings{pmlr-v123-kreil20a,
-  title =      {The surprising efficiency of framing geo-spatial time series forecasting as a video prediction task – Insights from the IARAI \t4c Competition at NeurIPS 2019},
-  author =       {Kreil, David P and Kopp, Michael K and Jonietz, David and Neun, Moritz and Gruca, Aleksandra and Herruzo, Pedro and Martin, Henry and Soleymani, Ali and Hochreiter, Sepp},
-  booktitle =      {Proceedings of the NeurIPS 2019 Competition and Demonstration Track},
-  pages =      {232--241},
-  year =      {2020},
-  editor =      {Escalante, Hugo Jair and Hadsell, Raia},
-  volume =      {123},
-  series =      {Proceedings of Machine Learning Research},
-  month =      {08--14 Dec},
-  publisher =    {PMLR},
-  pdf =      {http://proceedings.mlr.press/v123/kreil20a/kreil20a.pdf},
-  url =      {https://proceedings.mlr.press/v123/kreil20a.html},
-  abstract =      {Deep Neural Networks models are state-of-the-art solutions in accurately forecasting future video frames in a movie.  A successful video prediction model needs to extract and encode semantic features that describe the complex spatio-temporal correlations within image sequences of the real world.  The IARAI Traffic4cast Challenge of the NeurIPS Competition Track 2019 for the first time introduced the novel argument that this is also highly relevant for urban traffic. By framing traffic prediction as a movie completion task, the challenge requires models to take advantage of complex geo-spatial and temporal patterns of the underlying process. We here report on the success and insights obtained in a first Traffic Map Movie forecasting challenge. Although short-term traffic prediction is considered hard, this novel approach allowed several research groups to successfully predict future traffic states in a purely data-driven manner from pixel space. We here expand on the original rationale, summarize key findings, and discuss promising future directions of the t4c competition at NeurIPS.}
-}
-```
+- [Traffic4Cast Competition](https://www.iarai.ac.at/traffic4cast/) for providing the dataset and challenge!

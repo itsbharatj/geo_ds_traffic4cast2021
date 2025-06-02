@@ -1,0 +1,158 @@
+# config/enhanced_base.yaml
+# Enhanced base configuration with temporal channels support
+
+data:
+  root_dir: "/Users/ananyashukla/Desktop/Ananya_Shukla/Semester_6/GeoDS/NeurIPS2021-traffic4cast/src/data/DATASET/"
+  cities: ["BARCELONA", "MELBOURNE", "ANTWERP", "BANGKOK"]
+  input_timesteps: 12
+  output_timesteps: 6
+  channels: 8
+  height: 495
+  width: 436
+  limit_per_split: null
+  # Enhanced temporal channels configuration
+  use_enhanced_channels: true
+  stats_window_days: 30
+  enhanced_channels: 2  # avg_traffic_time_dow, avg_traffic_dow
+
+model:
+  name: "unet"
+  # These will be auto-calculated based on enhanced channels if not specified
+  in_channels: 120  # 12 timesteps * (8 original + 2 enhanced) channels
+  out_channels: 48  # 6 timesteps * 8 channels (output uses original format)
+  features: [64, 128, 256, 512]
+  bilinear: false
+
+training:
+  batch_size: 4  # Reduced for enhanced channels
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  device: "auto"
+  num_workers: 4
+  pin_memory: true
+
+experiment:
+  type: "spatial_transfer"
+  random_seed: 42
+  val_fraction: 0.1
+
+logging:
+  experiment_name: "enhanced_traffic4cast"
+  save_dir: "./experiments"
+  log_interval: 50
+  save_checkpoints: true
+  use_tensorboard: true
+
+---
+
+# config/enhanced_debug.yaml
+# Debug configuration with enhanced channels
+
+base_config: "config/enhanced_base.yaml"
+
+data:
+  limit_per_split: 50
+  cities: ["BARCELONA", "MELBOURNE"]
+  use_enhanced_channels: true
+  stats_window_days: 7  # Reduced for debugging
+
+training:
+  batch_size: 2
+  epochs: 3
+  num_workers: 0
+
+experiment:
+  type: "spatial_transfer"
+  train_cities: ["BARCELONA"]
+  test_cities: ["MELBOURNE"]
+  random_seed: 42
+  val_fraction: 0.1
+
+logging:
+  experiment_name: "debug_enhanced"
+  log_interval: 2
+
+---
+
+# config/enhanced_spatial_transfer.yaml
+# Spatial transfer with enhanced channels
+
+base_config: "config/enhanced_base.yaml"
+
+data:
+  use_enhanced_channels: true
+  stats_window_days: 30
+
+experiment:
+  type: "spatial_transfer"
+  train_cities: ["ANTWERP", "BANGKOK", "BARCELONA"]
+  test_cities: ["MELBOURNE"]
+  years: ["2019", "2020"]
+  random_seed: 42
+  val_fraction: 0.1
+
+logging:
+  experiment_name: "enhanced_spatial_transfer"
+
+training:
+  batch_size: 2  # Smaller batch for enhanced channels
+  epochs: 50
+
+---
+
+# config/enhanced_spatiotemporal_transfer.yaml
+# Spatio-temporal transfer with enhanced channels
+
+base_config: "config/enhanced_base.yaml"
+
+data:
+  cities: ["BARCELONA", "ANTWERP", "BANGKOK"]
+  use_enhanced_channels: true
+  stats_window_days: 30
+
+model:
+  name: "multitask_unet"
+  in_channels: 120  # 12 timesteps * 10 channels
+  out_channels: 48
+  features: [64, 128, 256, 512]
+  use_attention: true
+  use_meta_learning: true
+
+training:
+  batch_size: 2
+  epochs: 100
+  learning_rate: 0.0001
+  
+  # Multi-task loss weights
+  traffic_weight: 1.0
+  city_weight: 0.1
+  year_weight: 0.1
+  enhanced_traffic_weight: 0.5
+
+experiment:
+  type: "enhanced_spatiotemporal_transfer"
+  
+  # Training: Multiple cities with both years
+  train_cities: ["ANTWERP", "BANGKOK"]  
+  train_years: ["2019", "2020"]
+  
+  # Testing: Unseen city with temporal transfer
+  test_city: "BARCELONA"
+  test_train_year: "2019"
+  test_target_year: "2020"
+  
+  # Few-shot adaptation
+  adaptation_samples: 100
+  
+  # Dataset statistics
+  num_cities: 2
+  num_years: 2
+  
+  val_fraction: 0.1
+  random_seed: 42
+
+logging:
+  experiment_name: "enhanced_spatiotemporal_transfer"
+  save_dir: "./experiments"
+  log_interval: 25
